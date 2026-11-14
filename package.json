@@ -1,0 +1,17 @@
+{
+  "name": "days",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Pixel-RPG relationship memory book for two people",
+  "packageManager": "pnpm@10.28.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "dev:server": "pnpm --filter @days/server dev",
+    "dev:client": "pnpm --filter @days/client dev:h5",
+    "build": "pnpm --filter @days/client build:h5",
+    "start": "pnpm --filter @days/server start",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "e2e": "node e2e/run.mjs"
+  }
+}

@@ -1,0 +1,11 @@
+packages:
+  - packages/*
+onlyBuiltDependencies:
+  - better-sqlite3
+  - sharp
+  - esbuild
+  - '@swc/core'
+  - '@tarojs/binding'
+  - '@parcel/watcher'
+  - core-js
+  - core-js-pure
