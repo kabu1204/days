@@ -353,3 +353,18 @@ describe('export and purge', () => {
     expect((await a.get(`/api/memories/${keep.id}`)).status).toBe(200)
   })
 })
+
+describe('map tiles', () => {
+  it('serves byte ranges of PMTiles files without a session', async () => {
+    fs.mkdirSync(path.join(dir, 'tiles'))
+    fs.writeFileSync(path.join(dir, 'tiles', 'region.pmtiles'), '0123456789')
+    const part = await app.request('/tiles/region.pmtiles', { headers: { range: 'bytes=2-5' } })
+    expect(part.status).toBe(206)
+    expect(part.headers.get('content-range')).toBe('bytes 2-5/10')
+    expect(await part.text()).toBe('2345')
+    expect(await (await app.request('/tiles/region.pmtiles')).text()).toBe('0123456789')
+    expect((await app.request('/tiles/region.pmtiles', { headers: { range: 'bytes=20-30' } })).status).toBe(416)
+    expect((await app.request('/tiles/..%2Fdays.sqlite')).status).toBe(404)
+    expect((await app.request('/tiles/days.sqlite')).status).toBe(404)
+  })
+})

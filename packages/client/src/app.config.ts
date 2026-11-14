@@ -1,0 +1,17 @@
+export default defineAppConfig({
+  pages: [
+    'pages/timeline/index',
+    'pages/signin/index',
+    'pages/setup/index',
+    'pages/invite/index',
+    'pages/memory/detail',
+    'pages/memory/edit',
+    'pages/settings/index',
+    'pages/trash/index',
+    'pages/import/index',
+    'pages/lab/exif',
+    'pages/lab/map',
+    'pages/lab/pixel',
+  ],
+  window: { navigationStyle: 'custom' },
+})

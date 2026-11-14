@@ -4,6 +4,7 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
+import { compress } from 'hono/compress'
 import { z } from 'zod'
 import {
   CATEGORY_KEYS,
@@ -79,6 +80,8 @@ export function createApp(db: Db, config: Config) {
     c.header('X-Content-Type-Options', 'nosniff')
     c.header('Referrer-Policy', 'no-referrer')
   })
+  // Text responses (pages, scripts, JSON) are compressed; images and archives are not.
+  app.use('*', compress())
   app.use('/api/*', sameOrigin)
   app.onError((err, c) => {
     console.error(err)
@@ -182,6 +185,32 @@ export function createApp(db: Db, config: Config) {
   app.delete('/api/session', (c) => {
     endSession(c, db)
     return c.json({ ok: true })
+  })
+
+  // Map tiles are public map data, kept as single PMTiles files in the data
+  // directory. The PMTiles reader requests byte ranges.
+  app.get('/tiles/:name', async (c) => {
+    const name = c.req.param('name')
+    if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.pmtiles$/.test(name)) return c.json({ error: 'not_found' }, 404)
+    const abs = path.join(config.dataDir, 'tiles', name)
+    const stat = await fs.stat(abs).catch(() => null)
+    if (!stat?.isFile()) return c.json({ error: 'not_found' }, 404)
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/octet-stream',
+      'Accept-Ranges': 'bytes',
+      'Cache-Control': 'public, max-age=86400',
+    }
+    const range = /^bytes=(\d+)-(\d*)$/.exec(c.req.header('range') ?? '')
+    if (!range) {
+      headers['Content-Length'] = String(stat.size)
+      return new Response(Readable.toWeb(createReadStream(abs)) as ReadableStream, { headers })
+    }
+    const start = Number(range[1])
+    const end = Math.min(range[2] ? Number(range[2]) : stat.size - 1, stat.size - 1)
+    if (start > end) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${stat.size}` } })
+    headers['Content-Range'] = `bytes ${start}-${end}/${stat.size}`
+    headers['Content-Length'] = String(end - start + 1)
+    return new Response(Readable.toWeb(createReadStream(abs, { start, end })) as ReadableStream, { status: 206, headers })
   })
 
   // ---- everything below requires one of the two members ----

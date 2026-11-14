@@ -1,0 +1,63 @@
+import { useEffect, useState } from 'react'
+import { Text, View } from '@tarojs/components'
+import { CATEGORY_KEYS } from '@days/shared'
+import { testSprite } from '../../assets/manifest'
+import { deviceInfo } from '../../browser/photo'
+import { useT } from '../../i18n'
+import { Button, CategoryIcon, Frame, TopBar } from '../../ui'
+
+/** Phase 0, test c: is pixel art sharp at all screen sizes? */
+export default function LabPixelPage() {
+  const t = useT()
+  const [frame, setFrame] = useState(0)
+  const info = deviceInfo()
+  useEffect(() => {
+    const timer = setInterval(() => setFrame((f) => (f + 1) % testSprite.frames.length), 400)
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <View className="page">
+      <TopBar title={t('lab.pixel.title')} back />
+      <View className="small muted">{t('lab.pixel.text')}</View>
+      <View className="small" style={{ margin: '6px 0 12px' }} data-testid="lab-dpr">
+        {t('lab.pixel.dpr', { dpr: info.dpr, w: info.width, h: info.height })}
+      </View>
+
+      {[12, 16, 18, 24, 36].map((size) => (
+        <View key={size} style={{ fontSize: `${size}px`, lineHeight: 1.4, marginBottom: '6px' }}>
+          <Text className="muted" style={{ fontSize: '12px' }}>{size}px </Text>
+          {t('lab.pixel.sample')}
+        </View>
+      ))}
+
+      <Frame>
+        <View>{t('lab.pixel.dialog')}</View>
+        <View className="row" style={{ marginTop: '9px' }}>
+          <Button kind="primary">{t('common.confirm')}</Button>
+          <Button>{t('common.cancel')}</Button>
+        </View>
+      </Frame>
+
+      <View style={{ margin: '18px 0' }}>
+        {[1, 2, 3, 4, 6].map((scale) => (
+          <View
+            key={scale}
+            className="sprite"
+            data-testid={`sprite-${scale}`}
+            style={{ width: `${testSprite.size * scale}px`, height: `${testSprite.size * scale}px`, backgroundImage: `url("${testSprite.frames[frame]}")` }}
+          />
+        ))}
+      </View>
+
+      <View className="row wrap" style={{ marginBottom: '18px' }}>
+        {CATEGORY_KEYS.map((c) => <CategoryIcon key={c} category={c} size={36} />)}
+      </View>
+
+      <View className="row">
+        <View className="checker" />
+        <View className="checker fine" />
+      </View>
+    </View>
+  )
+}

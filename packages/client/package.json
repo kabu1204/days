@@ -1,0 +1,55 @@
+{
+  "name": "@days/client",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pixel memory book client (Taro H5)",
+  "templateInfo": {
+    "name": "default",
+    "typescript": true,
+    "css": "Sass",
+    "framework": "React"
+  },
+  "scripts": {
+    "build:h5": "taro build --type h5",
+    "dev:h5": "taro build --type h5 --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "browserslist": [
+    "defaults and fully supports es6-module",
+    "maintained node versions"
+  ],
+  "dependencies": {
+    "@babel/runtime": "^7.24.4",
+    "@days/shared": "workspace:*",
+    "@fontsource/fusion-pixel-12px-proportional-sc": "^5.3.0",
+    "@tarojs/components": "4.3.3",
+    "@tarojs/helper": "4.3.3",
+    "@tarojs/plugin-framework-react": "4.3.3",
+    "@tarojs/plugin-platform-h5": "4.3.3",
+    "@tarojs/react": "4.3.3",
+    "@tarojs/runtime": "4.3.3",
+    "@tarojs/shared": "4.3.3",
+    "@tarojs/taro": "4.3.3",
+    "exifr": "^7.1.3",
+    "maplibre-gl": "^5.0.0",
+    "pmtiles": "^4.0.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.24.4",
+    "@babel/plugin-transform-class-properties": "7.25.9",
+    "@babel/preset-react": "^7.24.1",
+    "@tarojs/cli": "4.3.3",
+    "@tarojs/vite-runner": "4.3.3",
+    "@types/react": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "babel-preset-taro": "4.3.3",
+    "postcss": "^8.5.6",
+    "react-refresh": "^0.14.0",
+    "sass": "^1.75.0",
+    "terser": "^5.30.4",
+    "typescript": "^5.6.0",
+    "vite": "^4.2.0"
+  }
+}
