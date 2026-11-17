@@ -1,11 +1,12 @@
 // Browser-only: the map component. Everything that depends on MapLibre GL is
-// confined to this file. Inputs: places, focus target, sprite position.
-// Outputs: place selected, view changed.
-import { useEffect, useRef } from 'react'
+// confined to this file. Inputs: places, focus target, selected place, sprite
+// position. Outputs: place selected, view changed.
+import { useEffect, useRef, useState } from 'react'
 import { View } from '@tarojs/components'
 import maplibregl, { type StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Protocol } from 'pmtiles'
+import { clusterPoints } from '@days/shared'
 
 export interface MapPlace {
   id: number
@@ -23,7 +24,16 @@ export interface MapView {
 
 export interface FootprintMapProps {
   places: MapPlace[]
-  focus: MapView
+  /** Initial and later view. When null, the view is fitted to all places once. */
+  focus: MapView | null
+  /** The place drawn as selected. */
+  selectedId?: number | null
+  /** Groups markers that would overlap into one numbered marker. */
+  cluster?: boolean
+  /** Shows zoom buttons. */
+  controls?: boolean
+  /** Shows a crosshair at the centre; the centre is the chosen point (see `onViewChanged`). */
+  crosshair?: boolean
   /** Position of the avatar sprite (used from Phase 3). */
   sprite?: { latitude: number; longitude: number; icon: string } | null
   /** Address of a PMTiles file in the Protomaps basemap layout; without it only the background is drawn. */
@@ -36,6 +46,12 @@ export interface FootprintMapProps {
   onLoaded?: (milliseconds: number) => void
   onError?: (message: string) => void
 }
+
+/** View used when there is neither a focus nor a place to fit. */
+const DEFAULT_VIEW: MapView = { latitude: 34, longitude: 108, zoom: 3 }
+const FIT_MAX_ZOOM = 14
+/** At this zoom level a group is opened by selecting its first place instead of zooming further. */
+const CLUSTER_SELECT_ZOOM = 17
 
 let protocolRegistered = false
 
@@ -66,18 +82,35 @@ function retroStyle(tilesUrl: string | null | undefined): StyleSpecification {
   return style
 }
 
-function markerElement(icon: string, title: string): HTMLElement {
+function placeMarker(place: MapPlace, selected: boolean): HTMLElement {
   const el = document.createElement('div')
-  el.className = 'pixel-marker'
-  el.style.backgroundImage = `url("${icon}")`
-  el.title = title
+  el.className = selected ? 'pixel-marker selected' : 'pixel-marker'
+  el.style.backgroundImage = `url("${place.icon}")`
+  el.title = place.name
+  el.setAttribute('data-testid', `map-place-${place.id}`)
   return el
+}
+
+function clusterMarker(count: number, selected: boolean): HTMLElement {
+  const el = document.createElement('div')
+  el.className = selected ? 'map-cluster selected' : 'map-cluster'
+  el.textContent = String(count)
+  el.setAttribute('data-testid', 'map-cluster')
+  return el
+}
+
+function boundsOf(points: { latitude: number; longitude: number }[]): maplibregl.LngLatBounds {
+  const bounds = new maplibregl.LngLatBounds()
+  for (const p of points) bounds.extend([p.longitude, p.latitude])
+  return bounds
 }
 
 export function FootprintMap(props: FootprintMapProps) {
   const container = useRef<HTMLElement | null>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const markers = useRef<maplibregl.Marker[]>([])
+  const fitted = useRef(false)
+  const [zoomLevel, setZoomLevel] = useState(Math.floor(props.focus?.zoom ?? DEFAULT_VIEW.zoom))
   const callbacks = useRef(props)
   callbacks.current = props
 
@@ -88,26 +121,30 @@ export function FootprintMap(props: FootprintMapProps) {
       maplibregl.addProtocol('pmtiles', new Protocol().tile)
       protocolRegistered = true
     }
+    const start = props.focus ?? DEFAULT_VIEW
     const started = performance.now()
     const instance = new maplibregl.Map({
       container: container.current,
       style: retroStyle(props.tilesUrl),
-      center: [props.focus.longitude, props.focus.latitude],
-      zoom: props.focus.zoom,
+      center: [start.longitude, start.latitude],
+      zoom: start.zoom,
       attributionControl: false,
       pixelRatio: props.lowRes ? 1 / 3 : undefined,
       dragRotate: false,
       pitchWithRotate: false,
     })
     instance.touchZoomRotate.disableRotation()
+    if (props.controls) instance.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right')
     if (props.tilesUrl) instance.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: '© OpenStreetMap' }))
     instance.once('idle', () => callbacks.current.onLoaded?.(Math.round(performance.now() - started)))
     instance.on('error', (e) => callbacks.current.onError?.(e.error?.message ?? 'error'))
+    instance.on('zoomend', () => setZoomLevel(Math.floor(instance.getZoom())))
     instance.on('moveend', () => {
       const c = instance.getCenter()
       callbacks.current.onViewChanged?.({ latitude: c.lat, longitude: c.lng, zoom: instance.getZoom() })
     })
     map.current = instance
+    fitted.current = !!props.focus
     return () => {
       markers.current = []
       map.current = null
@@ -115,27 +152,67 @@ export function FootprintMap(props: FootprintMapProps) {
     }
   }, [props.tilesUrl, props.lowRes]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Without a focus, the view is fitted to all places once they are known.
+  useEffect(() => {
+    const instance = map.current
+    if (!instance || fitted.current || !props.places.length) return
+    fitted.current = true
+    if (props.places.length === 1) {
+      instance.jumpTo({ center: [props.places[0].longitude, props.places[0].latitude], zoom: 13 })
+    } else {
+      instance.fitBounds(boundsOf(props.places), { padding: 48, maxZoom: FIT_MAX_ZOOM, duration: 0 })
+    }
+    setZoomLevel(Math.floor(instance.getZoom()))
+  }, [props.places, props.tilesUrl, props.lowRes])
+
   useEffect(() => {
     const instance = map.current
     if (!instance) return
     markers.current.forEach((m) => m.remove())
-    markers.current = props.places.map((place) => {
-      const el = markerElement(place.icon, place.name)
-      el.addEventListener('click', () => callbacks.current.onPlaceSelected?.(place))
-      return new maplibregl.Marker({ element: el }).setLngLat([place.longitude, place.latitude]).addTo(instance)
+    const groups = props.cluster
+      ? clusterPoints(props.places, zoomLevel)
+      : props.places.map((p) => ({ latitude: p.latitude, longitude: p.longitude, items: [p] }))
+    markers.current = groups.map((group) => {
+      const selected = group.items.some((p) => p.id === props.selectedId)
+      if (group.items.length === 1) {
+        const place = group.items[0]
+        const el = placeMarker(place, selected)
+        el.addEventListener('click', (e) => {
+          e.stopPropagation()
+          callbacks.current.onPlaceSelected?.(place)
+        })
+        return new maplibregl.Marker({ element: el }).setLngLat([place.longitude, place.latitude]).addTo(instance)
+      }
+      const el = clusterMarker(group.items.length, selected)
+      el.addEventListener('click', (e) => {
+        e.stopPropagation()
+        const bounds = boundsOf(group.items)
+        const target = instance.cameraForBounds(bounds, { padding: 64, maxZoom: CLUSTER_SELECT_ZOOM + 1 })
+        if (instance.getZoom() >= CLUSTER_SELECT_ZOOM || !target || (target.zoom ?? 0) <= instance.getZoom() + 0.5) {
+          callbacks.current.onPlaceSelected?.(group.items[0])
+        } else {
+          instance.easeTo({ ...target, duration: 400 })
+        }
+      })
+      return new maplibregl.Marker({ element: el }).setLngLat([group.longitude, group.latitude]).addTo(instance)
     })
     if (props.sprite) {
-      markers.current.push(
-        new maplibregl.Marker({ element: markerElement(props.sprite.icon, '') })
-          .setLngLat([props.sprite.longitude, props.sprite.latitude])
-          .addTo(instance),
-      )
+      const el = document.createElement('div')
+      el.className = 'pixel-marker'
+      el.style.backgroundImage = `url("${props.sprite.icon}")`
+      markers.current.push(new maplibregl.Marker({ element: el }).setLngLat([props.sprite.longitude, props.sprite.latitude]).addTo(instance))
     }
-  }, [props.places, props.sprite, props.tilesUrl, props.lowRes])
+  }, [props.places, props.sprite, props.selectedId, props.cluster, zoomLevel, props.tilesUrl, props.lowRes])
 
   useEffect(() => {
+    if (!props.focus) return
     map.current?.easeTo({ center: [props.focus.longitude, props.focus.latitude], zoom: props.focus.zoom, duration: 400 })
-  }, [props.focus.latitude, props.focus.longitude, props.focus.zoom])
+  }, [props.focus?.latitude, props.focus?.longitude, props.focus?.zoom]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <View className={`map-box ${props.lowRes ? 'lowres' : ''} ${props.className ?? ''}`} ref={container as any} data-testid="map" />
+  return (
+    <View className={`map-box ${props.lowRes ? 'lowres' : ''} ${props.className ?? ''}`} data-testid="map">
+      <View className="map-canvas" ref={container as any} />
+      {props.crosshair ? <View className="map-crosshair" data-testid="map-crosshair" /> : null}
+    </View>
+  )
 }

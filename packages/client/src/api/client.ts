@@ -6,6 +6,8 @@ import type {
   Photo,
   PhotoMetaInput,
   PhotoVariant,
+  Place,
+  PlaceInput,
   StatusResponse,
   TimelineSummary,
   Lang,
@@ -76,6 +78,15 @@ export const api = {
   deletePhoto: (id: number) => request<{ ok: true }>('DELETE', `/api/photos/${id}`),
   restorePhoto: (id: number) => request<{ ok: true }>('POST', `/api/photos/${id}/restore`),
   trash: () => request<{ memories: Memory[]; photos: TrashPhoto[] }>('GET', '/api/trash'),
+
+  places: () => request<{ places: Place[] }>('GET', '/api/places'),
+  place: (id: number) => request<Place>('GET', `/api/places/${id}`),
+  placeMemories: (id: number) => request<{ place: Place; memories: Memory[] }>('GET', `/api/places/${id}/memories`),
+  createPlace: (body: PlaceInput) => request<Place>('POST', '/api/places', body),
+  updatePlace: (id: number, body: Partial<PlaceInput>) => request<Place>('PATCH', `/api/places/${id}`, body),
+  deletePlace: (id: number) => request<{ ok: true }>('DELETE', `/api/places/${id}`),
+  mergePlace: (id: number, into: number) => request<Place>('POST', `/api/places/${id}/merge`, { into }),
+  splitPlace: (id: number, body: { memoryIds: number[]; name: string }) => request<Place>('POST', `/api/places/${id}/split`, body),
 }
 
 export function photoUrl(photoId: number, variant: PhotoVariant): string {

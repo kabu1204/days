@@ -4,6 +4,7 @@ import Taro, { useDidShow } from '@tarojs/taro'
 import { pad2, todayLocal, type Memory, type TimelineSummary } from '@days/shared'
 import { api, photoUrl } from '../../api/client'
 import { logo } from '../../assets/manifest'
+import { scrollToId } from '../../browser/dom'
 import { useT } from '../../i18n'
 import { ROUTES, timelineView, useMember } from '../../state/session'
 import { Button, CategoryIcon, Frame, Icon, cx, formatDate } from '../../ui'
@@ -23,7 +24,10 @@ export default function TimelinePage() {
     setMemories(null)
     api.month(m).then((r) => {
       // A slower answer for a month that is no longer selected is ignored.
-      if (latest.current === m) setMemories(r.memories)
+      if (latest.current !== m) return
+      setMemories(r.memories)
+      const selected = timelineView.memoryId
+      if (selected !== null && r.memories.some((x) => x.id === selected)) scrollToId(`memory-card-${selected}`)
     }, () => undefined)
   }, [])
 
@@ -77,6 +81,9 @@ export default function TimelinePage() {
       <View className="topbar">
         <Icon src={logo} size={36} />
         <Text className="h1">{t('app.name')}</Text>
+        <Button small kind="plain" onClick={() => Taro.navigateTo({ url: ROUTES.map })} testId="open-map">
+          {t('map.title')}
+        </Button>
         <Button small kind="plain" onClick={() => Taro.navigateTo({ url: ROUTES.settings })} testId="open-settings">
           {t('settings.title')}
         </Button>
@@ -132,7 +139,15 @@ export default function TimelinePage() {
           ) : (
             <View>
               {memories.map((m) => (
-                <Frame key={m.id} className="card" onClick={() => Taro.navigateTo({ url: `${ROUTES.detail}?id=${m.id}` })}>
+                <Frame
+                  key={m.id}
+                  id={`memory-card-${m.id}`}
+                  className={cx('card', m.id === timelineView.memoryId && 'selected')}
+                  onClick={() => {
+                    timelineView.memoryId = m.id
+                    Taro.navigateTo({ url: `${ROUTES.detail}?id=${m.id}` })
+                  }}
+                >
                   {m.photos.length > 0 ? (
                     <View className="cover">
                       <Image className="cover-img" src={photoUrl(m.photos[0].id, 'medium')} mode="aspectFill" lazyLoad />
@@ -147,7 +162,10 @@ export default function TimelinePage() {
                     <CategoryIcon category={m.category} />
                     <View className="grow">
                       <View className="title ellipsis" data-testid="card-title">{m.title}</View>
-                      <View className="date">{formatDate(m.startDate, m.datePrecision, m.endDate)}</View>
+                      <View className="date">
+                        {formatDate(m.startDate, m.datePrecision, m.endDate)}
+                        {m.place ? ` · ${m.place.name}` : ''}
+                      </View>
                     </View>
                   </View>
                 </Frame>

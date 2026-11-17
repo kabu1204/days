@@ -1,4 +1,5 @@
 import type { CategoryKey } from './categories'
+import type { PlaceIconKey } from './places'
 
 export type Lang = 'zh-CN' | 'en'
 export const LANGS: Lang[] = ['zh-CN', 'en']
@@ -43,6 +44,9 @@ export interface Memory {
   createdAt: string
   updatedAt: string
   deletedAt: string | null
+  placeId: number | null
+  /** The memory's Place, or null. */
+  place: PlaceRef | null
   photos: Photo[]
 }
 
@@ -53,6 +57,34 @@ export interface MemoryInput {
   endDate?: string | null
   datePrecision?: DatePrecision
   category?: CategoryKey
+  placeId?: number | null
+}
+
+/** The fields of a Place that a memory carries with it. */
+export interface PlaceRef {
+  id: number
+  name: string
+  /** WGS-84 */
+  latitude: number
+  longitude: number
+  icon: PlaceIconKey
+}
+
+export interface Place extends PlaceRef {
+  city: string
+  /** Number of memories (not deleted) at this Place. */
+  memoryCount: number
+  /** Start date of the earliest and of the latest memory at this Place. */
+  firstDate: string | null
+  lastDate: string | null
+}
+
+export interface PlaceInput {
+  name: string
+  latitude: number
+  longitude: number
+  city?: string
+  icon?: PlaceIconKey
 }
 
 export interface YearSummary {
@@ -72,6 +104,8 @@ export interface StatusResponse {
   memberCount: number
   me: Member | null
   members: Member[]
+  /** Address of the map tile file served by the server, or null when none is installed. */
+  mapTiles: string | null
 }
 
 export interface PhotoMetaInput {

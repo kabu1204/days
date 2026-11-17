@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
+  PLACE_SUGGEST_METERS,
+  centroid,
+  clusterPoints,
+  nearbyPlaces,
+  projectToPixels,
   daysInMonth,
   filingMonth,
   groupPhotos,
@@ -60,5 +65,40 @@ describe('grouping', () => {
       ['2022-05-02', 'e'],
       [null, 'x'],
     ])
+  })
+})
+
+describe('places', () => {
+  const harbour = { id: 1, latitude: 31.2304, longitude: 121.4737 }
+  const pier = { id: 2, latitude: 31.2311, longitude: 121.4737 } // about 78 m north
+  const lake = { id: 3, latitude: 30.2431, longitude: 120.1503 }
+
+  it('offers saved Places within 100 m, nearest first', () => {
+    const found = nearbyPlaces([lake, pier, harbour], { latitude: 31.2305, longitude: 121.4737 })
+    expect(found.map((p) => p.id)).toEqual([1, 2])
+    expect(found[0].distance).toBeLessThan(15)
+    expect(nearbyPlaces([lake], harbour)).toEqual([])
+    expect(PLACE_SUGGEST_METERS).toBe(100)
+  })
+
+  it('computes the mean position of located points only', () => {
+    expect(centroid([{ latitude: null, longitude: null }])).toBeNull()
+    const c = centroid([harbour, pier, { latitude: null, longitude: 5 }])!
+    expect(c.latitude).toBeCloseTo(31.23075, 5)
+    expect(c.longitude).toBeCloseTo(121.4737, 5)
+  })
+
+  it('groups markers that would overlap at low zoom and separates them when zoomed in', () => {
+    const far = clusterPoints([harbour, pier, lake], 5)
+    expect(far).toHaveLength(1)
+    expect(far[0].items).toHaveLength(3)
+    const city = clusterPoints([harbour, pier, lake], 10)
+    expect(city.map((c) => c.items.map((p) => p.id))).toEqual([[1, 2], [3]])
+    expect(clusterPoints([harbour, pier, lake], 18)).toHaveLength(3)
+  })
+
+  it('projects positions like the map does', () => {
+    expect(projectToPixels({ latitude: 0, longitude: 0 }, 0)).toEqual({ x: 128, y: 128 })
+    expect(projectToPixels({ latitude: 0, longitude: 180 }, 1).x).toBe(512)
   })
 })

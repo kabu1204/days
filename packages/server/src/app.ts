@@ -1,4 +1,4 @@
-import { createReadStream } from 'node:fs'
+import { createReadStream, readdirSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
@@ -9,6 +9,8 @@ import { z } from 'zod'
 import {
   CATEGORY_KEYS,
   LANGS,
+  PLACE_ICON_KEYS,
+  centroid,
   isValidDate,
   isValidMonth,
   nextMonthStart,
@@ -35,7 +37,16 @@ import type { Config } from './config'
 import { nowIso, type Db } from './db/index'
 import { createExportArchive } from './export'
 import { ImageError, storeImage } from './images'
-import { getMemoryRow, timelineSummary, toMemory, toPhoto, withPhotos, type MemoryRow, type PhotoRow } from './store'
+import {
+  getMemoryRow,
+  getPlace,
+  listPlaces,
+  timelineSummary,
+  toPhoto,
+  withPhotos,
+  type MemoryRow,
+  type PhotoRow,
+} from './store'
 import { serveClient } from './static'
 
 const SPRITES = ['partner-a', 'partner-b']
@@ -55,6 +66,7 @@ const memoryFields = {
   endDate: dateString.nullable(),
   datePrecision: z.enum(['day', 'month']),
   category: z.enum(CATEGORY_KEYS),
+  placeId: z.number().int().positive().nullable(),
 }
 const memoryCreate = z.object({
   ...memoryFields,
@@ -62,8 +74,21 @@ const memoryCreate = z.object({
   endDate: memoryFields.endDate.default(null),
   datePrecision: memoryFields.datePrecision.default('day'),
   category: memoryFields.category.default('daily'),
+  placeId: memoryFields.placeId.default(null),
 })
 const memoryPatch = z.object(memoryFields).partial()
+
+const placeFields = {
+  name: z.string().trim().min(1).max(40),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  city: z.string().trim().max(40),
+  icon: z.enum(PLACE_ICON_KEYS),
+}
+const placeCreate = z.object({ ...placeFields, city: placeFields.city.default(''), icon: placeFields.icon.default('pin') })
+const placePatch = z.object(placeFields).partial()
+
+const TILE_NAME = /^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.pmtiles$/
 
 function idParam(v: string): number | null {
   return /^\d{1,15}$/.test(v) ? Number(v) : null
@@ -94,6 +119,18 @@ export function createApp(db: Db, config: Config) {
     return parsed.success ? (parsed.data as z.infer<T>) : null
   }
 
+  /** The tile file named by MAP_TILES, or else the first one in the tiles directory. */
+  const mapTilesUrl = (): string | null => {
+    let names: string[]
+    try {
+      names = readdirSync(path.join(config.dataDir, 'tiles')).filter((n) => TILE_NAME.test(n)).sort()
+    } catch {
+      return null
+    }
+    const name = config.mapTiles ? names.find((n) => n === config.mapTiles) : names[0]
+    return name ? `/tiles/${name}` : null
+  }
+
   const memberCount = () => (db.prepare('SELECT count(*) AS n FROM member').get() as { n: number }).n
   const allMembers = (): Member[] =>
     (db.prepare('SELECT * FROM member ORDER BY slot').all() as MemberRow[]).map(toMember)
@@ -109,6 +146,7 @@ export function createApp(db: Db, config: Config) {
       me: me ? toMember(me) : null,
       // Names are shown only to a signed-in member.
       members: me ? allMembers() : [],
+      mapTiles: mapTilesUrl(),
     }
     return c.json(body)
   })
@@ -191,7 +229,7 @@ export function createApp(db: Db, config: Config) {
   // directory. The PMTiles reader requests byte ranges.
   app.get('/tiles/:name', async (c) => {
     const name = c.req.param('name')
-    if (!/^[A-Za-z0-9_-][A-Za-z0-9_.-]*\.pmtiles$/.test(name)) return c.json({ error: 'not_found' }, 404)
+    if (!TILE_NAME.test(name)) return c.json({ error: 'not_found' }, 404)
     const abs = path.join(config.dataDir, 'tiles', name)
     const stat = await fs.stat(abs).catch(() => null)
     if (!stat?.isFile()) return c.json({ error: 'not_found' }, 404)
@@ -271,17 +309,21 @@ export function createApp(db: Db, config: Config) {
     if (!input) return c.json({ error: 'invalid_input' }, 400)
     const start = normalizeStartDate(input.startDate, input.datePrecision)
     if (input.endDate && input.endDate < start) return c.json({ error: 'invalid_input' }, 400)
+    if (!placeExists(input.placeId)) return c.json({ error: 'invalid_place' }, 400)
     const me = c.get('member')
     const now = nowIso()
     const id = db
       .prepare(
-        `INSERT INTO memory (space_id, title, note, start_date, end_date, date_precision, category, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO memory (space_id, title, note, start_date, end_date, date_precision, category, place_id, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(me.space_id, input.title, input.note, start, input.endDate, input.datePrecision, input.category, me.id, now, now)
+      .run(me.space_id, input.title, input.note, start, input.endDate, input.datePrecision, input.category, input.placeId, me.id, now, now)
       .lastInsertRowid as number
-    return c.json(toMemory(getMemoryRow(db, id)!, []), 201)
+    return c.json(withPhotos(db, [getMemoryRow(db, id)!])[0], 201)
   })
+
+  const placeExists = (id: number | null | undefined) =>
+    id === null || id === undefined || !!db.prepare('SELECT 1 FROM place WHERE id = ?').get(id)
 
   const liveMemory = (idText: string): MemoryRow | null => {
     const id = idParam(idText)
@@ -305,10 +347,12 @@ export function createApp(db: Db, config: Config) {
     const start = normalizeStartDate(input.startDate ?? row.start_date, precision)
     const end = input.endDate === undefined ? row.end_date : input.endDate
     if (end && end < start) return c.json({ error: 'invalid_input' }, 400)
+    if (!placeExists(input.placeId)) return c.json({ error: 'invalid_place' }, 400)
+    const placeId = input.placeId === undefined ? row.place_id : input.placeId
     db.prepare(
-      `UPDATE memory SET title = ?, note = ?, start_date = ?, end_date = ?, date_precision = ?, category = ?, updated_at = ?
+      `UPDATE memory SET title = ?, note = ?, start_date = ?, end_date = ?, date_precision = ?, category = ?, place_id = ?, updated_at = ?
        WHERE id = ?`,
-    ).run(input.title ?? row.title, input.note ?? row.note, start, end, precision, input.category ?? row.category, nowIso(), row.id)
+    ).run(input.title ?? row.title, input.note ?? row.note, start, end, precision, input.category ?? row.category, placeId, nowIso(), row.id)
     return c.json(withPhotos(db, [getMemoryRow(db, row.id)!])[0])
   })
 
@@ -338,6 +382,128 @@ export function createApp(db: Db, config: Config) {
       memories: withPhotos(db, memories),
       photos: photos.map((p) => ({ ...toPhoto(p), memoryTitle: p.memory_title, deletedAt: p.deleted_at })),
     })
+  })
+
+  // ---- places ----
+
+  app.get('/api/places', (c) => c.json({ places: listPlaces(db) }))
+
+  app.post('/api/places', async (c) => {
+    const input = await readJson(c, placeCreate)
+    if (!input) return c.json({ error: 'invalid_input' }, 400)
+    const me = c.get('member')
+    const now = nowIso()
+    const id = db
+      .prepare(
+        `INSERT INTO place (space_id, name, latitude, longitude, city, icon, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(me.space_id, input.name, input.latitude, input.longitude, input.city, input.icon, me.id, now, now).lastInsertRowid as number
+    return c.json(getPlace(db, id), 201)
+  })
+
+  const placeParam = (idText: string) => {
+    const id = idParam(idText)
+    return id === null ? null : getPlace(db, id)
+  }
+
+  app.get('/api/places/:id', (c) => {
+    const place = placeParam(c.req.param('id'))
+    return place ? c.json(place) : c.json({ error: 'not_found' }, 404)
+  })
+
+  app.patch('/api/places/:id', async (c) => {
+    const place = placeParam(c.req.param('id'))
+    if (!place) return c.json({ error: 'not_found' }, 404)
+    const input = await readJson(c, placePatch)
+    if (!input) return c.json({ error: 'invalid_input' }, 400)
+    const next = { ...place, ...input }
+    db.prepare('UPDATE place SET name = ?, latitude = ?, longitude = ?, city = ?, icon = ?, updated_at = ? WHERE id = ?').run(
+      next.name, next.latitude, next.longitude, next.city, next.icon, nowIso(), place.id,
+    )
+    return c.json(getPlace(db, place.id))
+  })
+
+  // The memories keep everything except their link to this Place.
+  app.delete('/api/places/:id', (c) => {
+    const place = placeParam(c.req.param('id'))
+    if (!place) return c.json({ error: 'not_found' }, 404)
+    db.transaction(() => {
+      db.prepare('UPDATE memory SET place_id = NULL WHERE place_id = ?').run(place.id)
+      db.prepare('DELETE FROM place WHERE id = ?').run(place.id)
+    })()
+    return c.json({ ok: true })
+  })
+
+  /** All memories at one Place, oldest first. */
+  app.get('/api/places/:id/memories', (c) => {
+    const place = placeParam(c.req.param('id'))
+    if (!place) return c.json({ error: 'not_found' }, 404)
+    const rows = db
+      .prepare('SELECT * FROM memory WHERE place_id = ? AND deleted_at IS NULL ORDER BY start_date, id')
+      .all(place.id) as MemoryRow[]
+    return c.json({ place, memories: withPhotos(db, rows) })
+  })
+
+  /** Moves every memory of this Place to another Place and removes this one. */
+  app.post('/api/places/:id/merge', async (c) => {
+    const place = placeParam(c.req.param('id'))
+    if (!place) return c.json({ error: 'not_found' }, 404)
+    const input = await readJson(c, z.object({ into: z.number().int().positive() }))
+    if (!input || input.into === place.id) return c.json({ error: 'invalid_input' }, 400)
+    if (!getPlace(db, input.into)) return c.json({ error: 'invalid_place' }, 400)
+    db.transaction(() => {
+      db.prepare('UPDATE memory SET place_id = ? WHERE place_id = ?').run(input.into, place.id)
+      db.prepare('DELETE FROM place WHERE id = ?').run(place.id)
+    })()
+    return c.json(getPlace(db, input.into))
+  })
+
+  /**
+   * Separates some memories of this Place into a new Place. Without given
+   * coordinates, the new Place is at the mean position of those memories'
+   * photos, or at this Place's position when they have none.
+   */
+  app.post('/api/places/:id/split', async (c) => {
+    const place = placeParam(c.req.param('id'))
+    if (!place) return c.json({ error: 'not_found' }, 404)
+    const input = await readJson(
+      c,
+      z.object({
+        memoryIds: z.array(z.number().int().positive()).min(1).max(5000),
+        name: placeFields.name,
+        city: placeFields.city.optional(),
+        icon: placeFields.icon.optional(),
+        latitude: placeFields.latitude.optional(),
+        longitude: placeFields.longitude.optional(),
+      }),
+    )
+    if (!input) return c.json({ error: 'invalid_input' }, 400)
+    const ids = [...new Set(input.memoryIds)]
+    const marks = ids.map(() => '?').join(',')
+    const owned = (db.prepare(`SELECT count(*) AS n FROM memory WHERE place_id = ? AND id IN (${marks})`).get(place.id, ...ids) as { n: number }).n
+    if (owned !== ids.length) return c.json({ error: 'invalid_input' }, 400)
+    let position = input.latitude !== undefined && input.longitude !== undefined ? { latitude: input.latitude, longitude: input.longitude } : null
+    if (!position) {
+      const photos = db
+        .prepare(`SELECT latitude, longitude FROM photo WHERE deleted_at IS NULL AND memory_id IN (${marks})`)
+        .all(...ids) as { latitude: number | null; longitude: number | null }[]
+      position = centroid(photos) ?? { latitude: place.latitude, longitude: place.longitude }
+    }
+    const me = c.get('member')
+    const id = db.transaction(() => {
+      const now = nowIso()
+      const newId = db
+        .prepare(
+          `INSERT INTO place (space_id, name, latitude, longitude, city, icon, created_by, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(me.space_id, input.name, position!.latitude, position!.longitude, input.city ?? place.city, input.icon ?? place.icon, me.id, now, now)
+        .lastInsertRowid as number
+      db.prepare(`UPDATE memory SET place_id = ? WHERE place_id = ? AND id IN (${marks})`).run(newId, place.id, ...ids)
+      return newId
+    })()
+    return c.json(getPlace(db, id), 201)
   })
 
   // ---- photos ----

@@ -5,8 +5,8 @@ import type { Memory, Photo } from '@days/shared'
 import { api, photoUrl, runPool, uploadPhoto } from '../../api/client'
 import { pickImages, readLocalPhoto } from '../../browser/photo'
 import { useT } from '../../i18n'
-import { ROUTES, memberName, timelineView, useMember, useStatus } from '../../state/session'
-import { Button, CategoryIcon, Confirm, Frame, Progress, TopBar, formatDate, useToast } from '../../ui'
+import { ROUTES, memberName, openMapAt, openTimelineAt, timelineView, useMember, useStatus } from '../../state/session'
+import { Button, CategoryIcon, Confirm, Frame, PlaceTag, Progress, TopBar, formatDate, useToast } from '../../ui'
 import { ImageViewer } from '../../ui/ImageViewer'
 
 export default function MemoryDetailPage() {
@@ -21,6 +21,7 @@ export default function MemoryDetailPage() {
   const [toast, showToast] = useToast()
 
   const load = useCallback(() => {
+    timelineView.memoryId = id
     api.memory(id).then(setMemory, () => Taro.reLaunch({ url: ROUTES.timeline }))
   }, [id])
 
@@ -91,6 +92,13 @@ export default function MemoryDetailPage() {
               {t(`category.${memory.category}`)} · {t('memory.by', { name: memberName(status, memory.createdBy) })}
             </View>
           </View>
+        </View>
+        <View className="row wrap" style={{ marginTop: '6px' }}>
+          {memory.place ? (
+            <PlaceTag icon={memory.place.icon} name={memory.place.name} onClick={() => openMapAt(memory.place!.id, memory.id)} testId="memory-place" />
+          ) : null}
+          <View className="grow" />
+          <Button small kind="plain" onClick={() => openTimelineAt(memory)} testId="detail-to-timeline">{t('map.toTimeline')}</Button>
         </View>
         {memory.note ? <View className="note" data-testid="memory-note">{memory.note}</View> : null}
       </Frame>

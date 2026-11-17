@@ -14,6 +14,9 @@ export const ROUTES = {
   settings: '/pages/settings/index',
   trash: '/pages/trash/index',
   importer: '/pages/import/index',
+  map: '/pages/map/index',
+  places: '/pages/places/index',
+  place: '/pages/place/index',
   labExif: '/pages/lab/exif',
   labMap: '/pages/lab/map',
   labPixel: '/pages/lab/pixel',
@@ -87,5 +90,53 @@ export function memberName(s: StatusResponse | null, id: number): string {
   return s?.members.find((m) => m.id === id)?.displayName ?? ''
 }
 
-/** The month shown on the timeline; kept so that returning to it restores the view. */
-export const timelineView: { month: string | null } = { month: null }
+/**
+ * The month shown on the timeline and the memory selected there; kept so
+ * that returning to the timeline, or switching to the map, keeps the view.
+ */
+export const timelineView: { month: string | null; memoryId: number | null } = { month: null, memoryId: null }
+
+/** The last map position and the Place selected on the map. */
+export const mapView: {
+  view: { latitude: number; longitude: number; zoom: number } | null
+  placeId: number | null
+} = { view: null, placeId: null }
+
+/**
+ * Shows a memory in its month on the timeline. Returns to the timeline page
+ * when it is already open below the current page, so that its state is kept.
+ */
+export function openTimelineAt(memory: { id: number; startDate: string }): void {
+  timelineView.month = memory.startDate.slice(0, 7)
+  timelineView.memoryId = memory.id
+  const pages = Taro.getCurrentPages()
+  const index = pages.findIndex((p) => (p.route ?? '').includes('pages/timeline/index'))
+  if (index >= 0 && index < pages.length - 1) Taro.navigateBack({ delta: pages.length - 1 - index })
+  else Taro.reLaunch({ url: ROUTES.timeline })
+}
+
+/** Opens the map with a memory's Place selected. */
+export function openMapAt(placeId: number, memoryId?: number): void {
+  mapView.placeId = placeId
+  if (memoryId !== undefined) timelineView.memoryId = memoryId
+  Taro.navigateTo({ url: `${ROUTES.map}?place=${placeId}${memoryId !== undefined ? `&memory=${memoryId}` : ''}` })
+}
+
+const LOWRES_KEY = 'days.map.lowres'
+
+/** Whether the map is drawn at reduced resolution (pixel look). On unless switched off on this device. */
+export function getMapLowRes(): boolean {
+  try {
+    return Taro.getStorageSync(LOWRES_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+export function setMapLowRes(on: boolean): void {
+  try {
+    Taro.setStorageSync(LOWRES_KEY, on ? 'on' : 'off')
+  } catch {
+    /* applies for this visit only */
+  }
+}

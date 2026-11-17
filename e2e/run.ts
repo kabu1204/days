@@ -1,11 +1,11 @@
 /**
- * End-to-end check of Phase 0 and Phase 1 against the built client.
+ * End-to-end check of Phases 0, 1, and 2 against the built client.
  *
  *   pnpm build && pnpm e2e
  *
  * Starts the server on a temporary data directory, then drives a browser
  * through setup, invitation, memory creation, timeline, viewer, language
- * switch, bulk import, trash, and export. Screenshots are written to
+ * switch, bulk import, trash, export, Places, and the map. Screenshots are written to
  * `e2e/out/`. Requires Playwright with Chromium to be installed.
  */
 import assert from 'node:assert/strict'
@@ -138,9 +138,18 @@ async function main() {
     await fill(a, 'title', '港口的下午')
     await fill(a, 'note', '风很大，\n帽子差点飞走。')
     await a.locator(`.taro_page_show ${tid('category-travel')}`).click()
+    // The photos have coordinates and no Place exists yet: a new Place is offered.
+    await a.locator(`.taro_page_show ${tid('place-suggest-new')}`).click()
+    await fill(a, 'placeName', '外滩')
+    await fill(a, 'placeCity', '上海')
+    await a.locator(tid('place-icon-water')).click()
+    await shot(a, '04a-new-place')
+    await a.locator(tid('place-create')).click()
+    assert.equal((await a.locator(`.taro_page_show ${tid('chosen-place')}`).innerText()).trim(), '外滩')
     await shot(a, '04-edit')
     await a.locator(`.taro_page_show ${tid('save')}`).click()
     await a.waitForURL(/memory\/detail/)
+    assert.equal((await a.locator(`.taro_page_show ${tid('memory-place')}`).innerText()).trim(), '外滩')
     await a.locator(`.taro_page_show ${tid('photo-cell')} >> nth=1`).waitFor()
     assert.equal(await a.locator(`.taro_page_show ${tid('photo-cell')}`).count(), 2)
     assert.equal((await a.locator(`.taro_page_show ${tid('memory-date')}`).innerText()).trim(), '2021.07.15')
@@ -227,11 +236,19 @@ async function main() {
     assert.equal(await d.locator(tid('import-group')).count(), 4)
     const counts = await d.locator(tid('group-count')).allInnerTexts()
     assert.deepEqual(counts.map((s) => parseInt(s, 10)), [1, 2, 1, 1])
+    // Groups within 100 m of the saved Place are offered it.
+    assert.deepEqual((await d.locator(tid('group-place')).allInnerTexts()).map((s) => s.trim()), ['外滩', 'No place', '外滩', 'No place'])
+    // The lake group receives a new Place, named during the review.
+    await d.locator(tid('group-place')).nth(1).click()
+    await d.locator(tid('place-new-at-photos')).click()
+    await fill(d, 'placeName', 'West Lake')
+    await d.locator(tid('place-create')).click()
     await shot(d, '10-import-review')
     assert.ok((await d.locator(tid('import-start')).getAttribute('class'))!.includes('disabled'))
     // The same-day group that is far away is merged back; the undated group is skipped.
     await d.locator(tid('group-merge')).nth(1).click()
     assert.equal(await d.locator(tid('import-group')).count(), 3)
+    assert.equal((await d.locator(tid('group-place')).nth(1).innerText()).trim(), 'West Lake')
     await d.locator(tid('group-skip')).nth(2).click()
     await d.locator('.taro_page_show .title-input input').nth(1).fill('West Lake weekend')
     await d.locator(tid('import-start')).click()
@@ -266,6 +283,8 @@ async function main() {
     const lake = data.memories[3].photos[0]
     assert.ok(Buffer.from(zip[lake.file]).equals(fs.readFileSync(file('lake-1.jpg'))), 'exported original is byte-identical')
     assert.ok(Math.abs(lake.latitude - 30.2431) < 0.001)
+    assert.deepEqual(data.places.map((p: { name: string }) => p.name), ['West Lake', '外滩'])
+    assert.deepEqual(data.memories.map((m: { placeName: string | null }) => m.placeName), [null, '外滩', '外滩', 'West Lake'])
     // The offline page opens from disk and lists every memory.
     const exportDir = path.join(work, 'export')
     for (const [name, bytes] of Object.entries(zip)) {
@@ -280,6 +299,91 @@ async function main() {
 
     // ---- validation pages ----
     assert.ok(!loadedByA.some((u) => /maplib/.test(u)), 'the map library is not loaded by the main pages')
+
+    // ---- Places and the map ----
+    step('location tag to the map; the selected memory is kept')
+    await a.goto(`${base}/#/pages/timeline/index`)
+    await a.locator(tid('year-2021')).click()
+    await a.locator(`${tid('card-title')} >> text=Harbour`).click()
+    await a.waitForURL(/memory\/detail/)
+    await a.locator(`.taro_page_show ${tid('memory-place')}`).click()
+    await a.waitForURL(/pages\/map/)
+    await a.locator(tid('map-place-name')).waitFor({ timeout: 20000 })
+    assert.equal((await a.locator(tid('map-place-name')).innerText()).trim(), '外滩')
+    // All memories at the Place, oldest first; the one we came from is selected.
+    await a.locator(`.taro_page_show ${tid('place-memory-title')} >> nth=1`).waitFor()
+    assert.deepEqual(await a.locator(`.taro_page_show ${tid('place-memory-title')}`).allInnerTexts(), ['港口的下午 (Harbour)', '2021.07.15'])
+    assert.ok((await a.locator(`.taro_page_show ${tid('place-memory')}`).first().getAttribute('class'))!.includes('selected'))
+    assert.ok(await a.locator('.taro_page_show .pixel-marker.selected').count() === 1)
+    await shot(a, '17-map-place')
+    assert.equal(await a.evaluate(() => window.scrollX), 0, 'the page is not scrolled sideways')
+
+    step('map memory to its month on the timeline, and back')
+    await a.locator(`.taro_page_show ${tid('to-timeline')}`).nth(1).click()
+    await a.waitForURL(/pages\/timeline/)
+    await a.locator('.taro_page_show .card.selected').waitFor()
+    assert.match(await a.locator('.taro_page_show .card.selected').innerText(), /2021\.07\.15 · 外滩/)
+    await shot(a, '18-timeline-selected')
+    assert.equal(await a.evaluate(() => window.scrollX), 0, 'the page is not scrolled sideways')
+    await a.locator(`.taro_page_show ${tid('open-map')}`).click()
+    await a.waitForURL(/pages\/map/)
+    await a.locator(`.taro_page_show ${tid('place-memory')}.selected`).waitFor({ timeout: 20000 })
+    assert.equal((await a.locator(`.taro_page_show ${tid('place-memory')}.selected`).innerText()).split('\n')[0].trim(), '2021.07.15')
+
+    step('Places: separate, merge, rename')
+    await a.locator(`.taro_page_show ${tid('open-place')}`).click()
+    await a.waitForURL(/pages\/place\//)
+    await a.locator(`${tid('place-count')} >> visible=true >> text=2 条记忆`).waitFor()
+    await a.locator(`.taro_page_show ${tid('place-split')}`).click()
+    await a.locator(`${tid('place-memory')} >> visible=true`).nth(1).click()
+    assert.equal((await a.locator(`.taro_page_show ${tid('selected-count')}`).innerText()).trim(), '已选 1 条')
+    await a.locator(`.taro_page_show ${tid('split-confirm')}`).click()
+    await fill(a, 'splitName', '外滩码头')
+    await a.locator(tid('split-save')).click()
+    await a.locator(`.taro_page_show .topbar >> text=外滩码头`).waitFor()
+    await a.locator(`${tid('place-count')} >> visible=true >> text=1 条记忆`).waitFor()
+    await a.locator(`.taro_page_show ${tid('place-merge')}`).click()
+    await a.locator(`${tid('merge-target')} >> text=外滩`).first().click()
+    await a.locator(tid('confirm-ok')).click()
+    await a.locator(`${tid('place-count')} >> visible=true >> text=2 条记忆`).waitFor()
+    await a.locator(`.taro_page_show ${tid('edit-place')}`).click()
+    await fill(a, 'placeName', '外滩 The Bund')
+    await a.locator(tid('place-save')).click()
+    await a.locator(`.taro_page_show .topbar >> text=外滩 The Bund`).waitFor()
+    await shot(a, '19-place')
+    const placeList = await ctxA.request.get(`${base}/api/places`)
+    assert.deepEqual(((await placeList.json()).places as { name: string; memoryCount: number }[]).map((p) => [p.name, p.memoryCount]), [
+      ['West Lake', 1],
+      ['外滩 The Bund', 2],
+    ])
+
+    step('a saved Place is offered to a new memory with photos nearby')
+    await a.goto(`${base}/#/pages/memory/edit`)
+    await choose(a, tid('add-photos'), [file('city-1.jpg')])
+    await a.locator(`.taro_page_show ${tid('place-suggest-use')}`).click()
+    assert.equal((await a.locator(`.taro_page_show ${tid('chosen-place')}`).innerText()).trim(), '外滩 The Bund')
+    await fill(a, 'title', '夜景')
+    await a.locator(`.taro_page_show ${tid('save')}`).click()
+    await a.waitForURL(/memory\/detail/)
+    assert.equal((await a.locator(`.taro_page_show ${tid('memory-place')}`).innerText()).trim(), '外滩 The Bund')
+
+    step('map view of all Places, grouped when zoomed out')
+    await a.goto(`${base}/#/pages/places/index`)
+    await a.reload() // starts a new page stack
+    await a.locator(`${tid('open-map')} >> visible=true`).click()
+    await a.waitForURL(/pages\/map/)
+    // Without a selection the view is fitted to both Places, which are drawn apart.
+    await a.locator('.pixel-marker >> nth=1').waitFor({ timeout: 20000 })
+    assert.equal(await a.locator('.pixel-marker').count(), 2)
+    await shot(a, '20-map-all')
+    // The two Places are 165 km apart; zoomed out, they share one numbered marker.
+    for (let i = 0; i < 9; i++) {
+      await a.locator('.maplibregl-ctrl-zoom-out >> visible=true').click()
+      await a.waitForTimeout(150)
+    }
+    await a.locator('[data-testid="map-cluster"] >> visible=true').waitFor({ timeout: 10000 })
+    assert.equal((await a.locator('[data-testid="map-cluster"] >> visible=true').innerText()).trim(), '2')
+    await shot(a, '21-map-grouped')
 
     step('validation page a: photo metadata')
     await a.goto(`${base}/#/pages/lab/exif`)

@@ -1,17 +1,17 @@
 import { useEffect, useState, type PropsWithChildren, type ReactNode } from 'react'
 import { Image, Input, Text, Textarea, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { daysInMonth, pad2, type CategoryKey, type DatePrecision } from '@days/shared'
-import { categoryIcons } from '../assets/manifest'
+import { daysInMonth, pad2, type CategoryKey, type DatePrecision, type PlaceIconKey } from '@days/shared'
+import { categoryIcons, placeIcons } from '../assets/manifest'
 import { useT } from '../i18n'
 
 function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ')
 }
 
-export function Frame(props: PropsWithChildren<{ className?: string; tone?: 'paper' | 'ink'; onClick?: () => void }>) {
+export function Frame(props: PropsWithChildren<{ className?: string; tone?: 'paper' | 'ink'; id?: string; onClick?: () => void }>) {
   return (
-    <View className={cx('px-frame', props.tone && `tone-${props.tone}`, props.className)} onClick={props.onClick}>
+    <View id={props.id} className={cx('px-frame', props.tone && `tone-${props.tone}`, props.className)} onClick={props.onClick}>
       {props.children}
     </View>
   )
@@ -49,6 +49,20 @@ export function Icon(props: { src: string; size?: 12 | 24 | 36 | 48; className?:
 
 export function CategoryIcon(props: { category: CategoryKey; size?: 12 | 24 | 36 | 48 }) {
   return <Icon src={categoryIcons[props.category] ?? categoryIcons.other} size={props.size} />
+}
+
+export function PlaceIcon(props: { icon: PlaceIconKey; size?: 12 | 24 | 36 | 48 }) {
+  return <Icon src={placeIcons[props.icon] ?? placeIcons.pin} size={props.size} />
+}
+
+/** A memory's location: the Place icon and name. */
+export function PlaceTag(props: { icon: PlaceIconKey; name: string; onClick?: () => void; testId?: string }) {
+  return (
+    <View className={cx('place-tag', props.onClick && 'link')} data-testid={props.testId} onClick={props.onClick}>
+      <PlaceIcon icon={props.icon} />
+      <Text className="ellipsis">{props.name}</Text>
+    </View>
+  )
 }
 
 export function TopBar(props: PropsWithChildren<{ title: string; back?: boolean | string }>) {

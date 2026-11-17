@@ -2,11 +2,12 @@ import path from 'node:path'
 import archiver from 'archiver'
 import type { Db } from './db/index'
 import type { MemberRow } from './auth'
-import { photosByMemory, type MemoryRow } from './store'
+import { photosByMemory, type MemoryRow, type PlaceRow } from './store'
 
 export interface ExportData {
   exportedAt: string
   members: { id: number; displayName: string }[]
+  places: { id: number; name: string; city: string; icon: string; latitude: number; longitude: number }[]
   memories: {
     id: number
     title: string
@@ -15,6 +16,8 @@ export interface ExportData {
     endDate: string | null
     datePrecision: string
     category: string
+    placeId: number | null
+    placeName: string | null
     createdBy: number
     createdAt: string
     photos: {
@@ -36,6 +39,8 @@ export function buildExportData(db: Db): { data: ExportData; files: { source: st
     .prepare('SELECT * FROM memory WHERE deleted_at IS NULL ORDER BY start_date, id')
     .all() as MemoryRow[]
   const photos = photosByMemory(db, rows.map((r) => r.id))
+  const places = db.prepare('SELECT * FROM place ORDER BY name, id').all() as PlaceRow[]
+  const placeName = new Map(places.map((p) => [p.id, p.name]))
   const files: { source: string; name: string }[] = []
 
   const memories = rows.map((m) => {
@@ -48,6 +53,8 @@ export function buildExportData(db: Db): { data: ExportData; files: { source: st
       endDate: m.end_date,
       datePrecision: m.date_precision,
       category: m.category,
+      placeId: m.place_id,
+      placeName: m.place_id === null ? null : placeName.get(m.place_id) ?? null,
       createdBy: m.created_by,
       createdAt: m.created_at,
       photos: (photos.get(m.id) ?? []).map((p, i) => {
@@ -72,6 +79,7 @@ export function buildExportData(db: Db): { data: ExportData; files: { source: st
     data: {
       exportedAt: new Date().toISOString(),
       members: members.map((m) => ({ id: m.id, displayName: m.display_name })),
+      places: places.map((p) => ({ id: p.id, name: p.name, city: p.city, icon: p.icon, latitude: p.latitude, longitude: p.longitude })),
       memories,
     },
     files,
@@ -145,7 +153,10 @@ export function offlinePage(data: ExportData): string {
     a.appendChild(el('h4', '', m.title));
     var date = m.datePrecision === 'month' ? m.startDate.slice(0, 7) : m.startDate;
     if (m.endDate) date += ' – ' + m.endDate;
-    a.appendChild(el('div', 'meta', date + ' · ' + m.category + ' · ' + (names[m.createdBy] || '')));
+    var meta = [date, m.category];
+    if (m.placeName) meta.push('@ ' + m.placeName);
+    meta.push(names[m.createdBy] || '');
+    a.appendChild(el('div', 'meta', meta.join(' · ')));
     if (m.note) a.appendChild(el('div', 'note', m.note));
     var box = el('div', 'photos');
     m.photos.forEach(function (p) {

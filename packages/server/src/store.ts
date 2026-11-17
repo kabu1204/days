@@ -1,4 +1,4 @@
-import type { Memory, Photo, TimelineSummary, YearSummary } from '@days/shared'
+import type { Memory, Photo, Place, PlaceIconKey, PlaceRef, TimelineSummary, YearSummary } from '@days/shared'
 import type { CategoryKey, DatePrecision } from '@days/shared'
 import type { Db } from './db/index'
 
@@ -14,6 +14,20 @@ export interface MemoryRow {
   created_at: string
   updated_at: string
   deleted_at: string | null
+  place_id: number | null
+}
+
+export interface PlaceRow {
+  id: number
+  space_id: number
+  name: string
+  latitude: number
+  longitude: number
+  city: string
+  icon: PlaceIconKey
+  created_by: number
+  created_at: string
+  updated_at: string
 }
 
 export interface PhotoRow {
@@ -51,7 +65,11 @@ export function toPhoto(r: PhotoRow): Photo {
   }
 }
 
-export function toMemory(r: MemoryRow, photos: PhotoRow[]): Memory {
+export function toPlaceRef(r: PlaceRow): PlaceRef {
+  return { id: r.id, name: r.name, latitude: r.latitude, longitude: r.longitude, icon: r.icon }
+}
+
+export function toMemory(r: MemoryRow, photos: PhotoRow[], place: PlaceRow | null = null): Memory {
   return {
     id: r.id,
     title: r.title,
@@ -64,6 +82,8 @@ export function toMemory(r: MemoryRow, photos: PhotoRow[]): Memory {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     deletedAt: r.deleted_at,
+    placeId: r.place_id,
+    place: place ? toPlaceRef(place) : null,
     photos: photos.map(toPhoto),
   }
 }
@@ -86,9 +106,40 @@ export function photosByMemory(db: Db, memoryIds: number[]): Map<number, PhotoRo
   return map
 }
 
+export function placesById(db: Db, ids: (number | null)[]): Map<number, PlaceRow> {
+  const unique = [...new Set(ids.filter((id): id is number => id !== null))]
+  const map = new Map<number, PlaceRow>()
+  if (!unique.length) return map
+  const rows = db.prepare(`SELECT * FROM place WHERE id IN (${unique.map(() => '?').join(',')})`).all(...unique) as PlaceRow[]
+  for (const r of rows) map.set(r.id, r)
+  return map
+}
+
+/** Memories with their photos and their Place. */
 export function withPhotos(db: Db, rows: MemoryRow[]): Memory[] {
   const photos = photosByMemory(db, rows.map((r) => r.id))
-  return rows.map((r) => toMemory(r, photos.get(r.id) ?? []))
+  const places = placesById(db, rows.map((r) => r.place_id))
+  return rows.map((r) => toMemory(r, photos.get(r.id) ?? [], r.place_id === null ? null : places.get(r.place_id) ?? null))
+}
+
+const PLACE_SELECT = `SELECT p.*, count(m.id) AS memory_count, min(m.start_date) AS first_date, max(m.start_date) AS last_date
+  FROM place p LEFT JOIN memory m ON m.place_id = p.id AND m.deleted_at IS NULL`
+
+type PlaceStatsRow = PlaceRow & { memory_count: number; first_date: string | null; last_date: string | null }
+
+function toPlace(r: PlaceStatsRow): Place {
+  return { ...toPlaceRef(r), city: r.city, memoryCount: r.memory_count, firstDate: r.first_date, lastDate: r.last_date }
+}
+
+/** All Places with the number and date range of their memories, by name. */
+export function listPlaces(db: Db): Place[] {
+  const rows = db.prepare(`${PLACE_SELECT} GROUP BY p.id ORDER BY p.name COLLATE NOCASE, p.id`).all() as PlaceStatsRow[]
+  return rows.map(toPlace)
+}
+
+export function getPlace(db: Db, id: number): Place | null {
+  const row = db.prepare(`${PLACE_SELECT} WHERE p.id = ? GROUP BY p.id`).get(id) as PlaceStatsRow | undefined
+  return row ? toPlace(row) : null
 }
 
 export function getMemoryRow(db: Db, id: number): MemoryRow | undefined {

@@ -1,16 +1,29 @@
 import { useEffect, useState } from 'react'
 import { Image, Text, View } from '@tarojs/components'
 import Taro, { useRouter } from '@tarojs/taro'
-import { CATEGORY_KEYS, isValidMonth, normalizeStartDate, todayLocal, type CategoryKey, type DatePrecision } from '@days/shared'
+import {
+  CATEGORY_KEYS,
+  centroid,
+  isValidMonth,
+  nearbyPlaces,
+  normalizeStartDate,
+  todayLocal,
+  type CategoryKey,
+  type DatePrecision,
+  type LatLon,
+  type Place,
+} from '@days/shared'
 import { ApiFailure, api, runPool, uploadPhoto } from '../../api/client'
 import { pickImages, readLocalPhoto, releaseLocalPhotos, type LocalPhoto } from '../../browser/photo'
 import { errorText, useT } from '../../i18n'
-import { ROUTES, timelineView, useMember } from '../../state/session'
-import { Button, CategoryIcon, DateDialog, Field, Frame, Progress, TextArea, TextInput, TopBar, cx, formatDate } from '../../ui'
+import { ROUTES, getMapLowRes, timelineView, useMember, useStatus } from '../../state/session'
+import { Button, CategoryIcon, DateDialog, Field, Frame, PlaceTag, Progress, TextArea, TextInput, TopBar, cx, formatDate } from '../../ui'
+import { PlacePicker, choiceIcon, choiceName, resolvePlace, type PlaceChoice } from '../../ui/PlacePicker'
 
 export default function EditMemoryPage() {
   const t = useT()
   const me = useMember()
+  const status = useStatus()
   const params = useRouter().params
   const id = params.id ? Number(params.id) : null
 
@@ -34,6 +47,11 @@ export default function EditMemoryPage() {
   const [error, setError] = useState('')
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [places, setPlaces] = useState<Place[]>([])
+  const [place, setPlace] = useState<PlaceChoice | null>(null)
+  /** Position of the photos already saved with an existing memory. */
+  const [savedPoint, setSavedPoint] = useState<LatLon | null>(null)
+  const [placePicker, setPlacePicker] = useState<null | 'list' | 'name'>(null)
 
   useEffect(() => {
     if (!me || id === null) return
@@ -44,9 +62,19 @@ export default function EditMemoryPage() {
       setPrecision(m.datePrecision)
       setStartDate(m.startDate)
       setEndDate(m.endDate)
+      setPlace(m.place ? { kind: 'existing', place: m.place } : null)
+      setSavedPoint(centroid(m.photos))
       setReady(true)
     }, () => Taro.navigateBack())
   }, [me, id])
+
+  useEffect(() => {
+    if (me) api.places().then((r) => setPlaces(r.places), () => undefined)
+  }, [me])
+
+  // A saved Place within about 100 m of the photos is offered.
+  const point = centroid(photos) ?? savedPoint
+  const suggestion = !place && point ? nearbyPlaces(places, point)[0] ?? null : null
 
   useEffect(() => () => releaseLocalPhotos(photos), []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -74,7 +102,8 @@ export default function EditMemoryPage() {
     setBusy(true)
     setError('')
     try {
-      const memory = id === null ? await api.createMemory(body) : await api.updateMemory(id, body)
+      const placeId = await resolvePlace(place)
+      const memory = id === null ? await api.createMemory({ ...body, placeId }) : await api.updateMemory(id, { ...body, placeId })
       let failed = 0
       if (photos.length) {
         let done = 0
@@ -142,6 +171,28 @@ export default function EditMemoryPage() {
         </Field>
       ) : null}
 
+      <Field label={t('memory.place')}>
+        <View className="row wrap">
+          <Button kind="plain" onClick={() => setPlacePicker('list')} testId="pick-place">
+            {place ? <PlaceTag icon={choiceIcon(place)} name={choiceName(place)} testId="chosen-place" /> : t('place.noPlace')}
+          </Button>
+          {place ? <Button small onClick={() => setPlace(null)} testId="clear-place">{t('place.clear')}</Button> : null}
+        </View>
+        {suggestion ? (
+          <View className="suggest" data-testid="place-suggest">
+            <Text className="small">{t('place.suggest', { name: suggestion.name })}</Text>
+            <Button small kind="calm" onClick={() => setPlace({ kind: 'existing', place: suggestion })} testId="place-suggest-use">
+              {t('place.useNamed', { name: suggestion.name })}
+            </Button>
+          </View>
+        ) : !place && point ? (
+          <View className="suggest" data-testid="place-suggest">
+            <Text className="small">{t('place.photosLocated')}</Text>
+            <Button small kind="calm" onClick={() => setPlacePicker('name')} testId="place-suggest-new">{t('place.newAtPhotos')}</Button>
+          </View>
+        ) : null}
+      </Field>
+
       <Field label={t('memory.category')}>
         <Frame className="flat">
           <View className="category-grid">
@@ -168,6 +219,20 @@ export default function EditMemoryPage() {
       ) : null}
       <Button block kind="primary" disabled={busy} onClick={save} testId="save">{t('common.save')}</Button>
 
+      {placePicker !== null ? (
+        <PlacePicker
+          places={places}
+          point={point}
+          tilesUrl={status?.mapTiles ?? null}
+          lowRes={getMapLowRes()}
+          startWithName={placePicker === 'name'}
+          onClose={() => setPlacePicker(null)}
+          onPick={(choice) => {
+            setPlace(choice)
+            setPlacePicker(null)
+          }}
+        />
+      ) : null}
       {picker === 'start' ? (
         <DateDialog
           value={startDate}

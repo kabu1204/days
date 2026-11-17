@@ -5,7 +5,7 @@ import exifr from 'exifr'
 import { unzipSync, strFromU8 } from 'fflate'
 import sharp from 'sharp'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { Memory, Photo, StatusResponse, TimelineSummary } from '@days/shared'
+import type { Memory, Photo, Place, StatusResponse, TimelineSummary } from '@days/shared'
 import { createApp } from '../src/app'
 import type { Config } from '../src/config'
 import { openDb, type Db } from '../src/db/index'
@@ -27,6 +27,7 @@ beforeEach(() => {
     cookieSecure: false,
     setupToken: null,
     maxUploadBytes: 60 * 1024 * 1024,
+    mapTiles: null,
   }
   db = openDb(path.join(dir, 'days.sqlite'))
   app = createApp(db, config)
@@ -366,5 +367,101 @@ describe('map tiles', () => {
     expect((await app.request('/tiles/region.pmtiles', { headers: { range: 'bytes=20-30' } })).status).toBe(416)
     expect((await app.request('/tiles/..%2Fdays.sqlite')).status).toBe(404)
     expect((await app.request('/tiles/days.sqlite')).status).toBe(404)
+  })
+})
+
+describe('places', () => {
+  const harbour = { name: 'Harbour', latitude: 31.2304, longitude: 121.4737, city: 'Shanghai' }
+  const createMemory = async (c: ReturnType<typeof client>, title: string, startDate: string, placeId: number | null = null) =>
+    (await (await c.post('/api/memories', { title, startDate, placeId })).json()) as Memory
+
+  it('creates a Place, links memories, and lists them oldest first', async () => {
+    const { a, b } = await pair()
+    const res = await a.post('/api/places', harbour)
+    expect(res.status).toBe(201)
+    const place = (await res.json()) as Place
+    expect(place).toMatchObject({ name: 'Harbour', icon: 'pin', city: 'Shanghai', memoryCount: 0 })
+
+    const later = await createMemory(a, 'Later', '2022-10-02', place.id)
+    expect(later.place).toMatchObject({ id: place.id, name: 'Harbour' })
+    const earlier = await createMemory(b, 'Earlier', '2021-07-15')
+    // The partner sets the Place afterwards; other fields stay as they were.
+    const patched = (await (await b.patch(`/api/memories/${earlier.id}`, { placeId: place.id })).json()) as Memory
+    expect(patched.placeId).toBe(place.id)
+    expect(patched.title).toBe('Earlier')
+
+    const atPlace = (await (await a.get(`/api/places/${place.id}/memories`)).json()) as { memories: Memory[]; place: Place }
+    expect(atPlace.memories.map((m) => m.title)).toEqual(['Earlier', 'Later'])
+    expect(atPlace.place).toMatchObject({ memoryCount: 2, firstDate: '2021-07-15', lastDate: '2022-10-02' })
+
+    // Deleted memories are not counted; the month list carries the Place too.
+    await a.del(`/api/memories/${later.id}`)
+    expect(((await (await a.get(`/api/places/${place.id}`)).json()) as Place).memoryCount).toBe(1)
+    const month = (await (await a.get('/api/memories?month=2021-07')).json()) as { memories: Memory[] }
+    expect(month.memories[0].place?.name).toBe('Harbour')
+
+    expect((await a.post('/api/memories', { title: 'X', startDate: '2021-01-01', placeId: 999 })).status).toBe(400)
+    expect((await a.patch(`/api/memories/${earlier.id}`, { placeId: 999 })).status).toBe(400)
+    expect((await a.post('/api/places', { ...harbour, latitude: 95 })).status).toBe(400)
+    expect((await a.post('/api/places', { ...harbour, icon: 'castle' })).status).toBe(400)
+    expect((await client().get('/api/places')).status).toBe(401)
+  })
+
+  it('renames, merges, separates, and deletes Places', async () => {
+    const { a } = await pair()
+    const one = (await (await a.post('/api/places', harbour)).json()) as Place
+    const two = (await (await a.post('/api/places', { name: 'Harbor', latitude: 31.2306, longitude: 121.4741 })).json()) as Place
+    const m1 = await createMemory(a, 'First', '2021-07-15', one.id)
+    const m2 = await createMemory(a, 'Second', '2021-08-01', two.id)
+    const m3 = await createMemory(a, 'Third', '2021-09-01', two.id)
+
+    const renamed = (await (await a.patch(`/api/places/${one.id}`, { name: 'The harbour', icon: 'water' })).json()) as Place
+    expect(renamed).toMatchObject({ name: 'The harbour', icon: 'water', latitude: harbour.latitude })
+
+    // Merge: every memory moves, the source disappears.
+    expect((await a.post(`/api/places/${two.id}/merge`, { into: two.id })).status).toBe(400)
+    const merged = (await (await a.post(`/api/places/${two.id}/merge`, { into: one.id })).json()) as Place
+    expect(merged.memoryCount).toBe(3)
+    expect((await a.get(`/api/places/${two.id}`)).status).toBe(404)
+
+    // Separate: the new Place is placed at the photos of the moved memories.
+    const form = new FormData()
+    form.set('file', new File([new Uint8Array(await sampleJpeg({ latitude: 30.2431, longitude: 120.1503 }))], 'lake.jpg', { type: 'image/jpeg' }))
+    expect((await a.post(`/api/memories/${m3.id}/photos`, form)).status).toBe(201)
+    expect((await a.post(`/api/places/${one.id}/split`, { memoryIds: [999], name: 'Lake' })).status).toBe(400)
+    const split = await a.post(`/api/places/${one.id}/split`, { memoryIds: [m3.id], name: 'Lake' })
+    expect(split.status).toBe(201)
+    const lake = (await split.json()) as Place
+    expect(lake).toMatchObject({ name: 'Lake', memoryCount: 1, icon: 'water' })
+    expect(lake.latitude).toBeCloseTo(30.2431, 3)
+    expect(((await (await a.get(`/api/memories/${m3.id}`)).json()) as Memory).placeId).toBe(lake.id)
+
+    // Without photo coordinates the new Place keeps the source position.
+    const noPhotos = (await (await a.post(`/api/places/${one.id}/split`, { memoryIds: [m2.id], name: 'Pier' })).json()) as Place
+    expect(noPhotos.latitude).toBeCloseTo(harbour.latitude, 6)
+
+    const list = (await (await a.get('/api/places')).json()) as { places: Place[] }
+    expect(list.places.map((p) => p.name)).toEqual(['Lake', 'Pier', 'The harbour'])
+
+    // Deleting a Place keeps its memories.
+    expect((await a.del(`/api/places/${one.id}`)).status).toBe(200)
+    const kept = (await (await a.get(`/api/memories/${m1.id}`)).json()) as Memory
+    expect(kept).toMatchObject({ title: 'First', placeId: null, place: null })
+  })
+
+  it('exports Places and reports the installed tile file', async () => {
+    const { a } = await pair()
+    expect(((await (await a.get('/api/status')).json()) as StatusResponse).mapTiles).toBeNull()
+    fs.mkdirSync(path.join(dir, 'tiles'))
+    fs.writeFileSync(path.join(dir, 'tiles', 'region.pmtiles'), 'x')
+    fs.writeFileSync(path.join(dir, 'tiles', 'notes.txt'), 'x')
+    expect(((await (await a.get('/api/status')).json()) as StatusResponse).mapTiles).toBe('/tiles/region.pmtiles')
+
+    const place = (await (await a.post('/api/places', harbour)).json()) as Place
+    await createMemory(a, 'At the harbour', '2021-07-15', place.id)
+    const zip = unzipSync(new Uint8Array(await (await a.get('/api/export')).arrayBuffer()))
+    const data = JSON.parse(strFromU8(zip['data.json']))
+    expect(data.places).toEqual([{ id: place.id, name: 'Harbour', city: 'Shanghai', icon: 'pin', latitude: harbour.latitude, longitude: harbour.longitude }])
+    expect(data.memories[0]).toMatchObject({ placeId: place.id, placeName: 'Harbour' })
   })
 })

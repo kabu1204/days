@@ -1,4 +1,4 @@
-import type { CategoryKey } from '@days/shared'
+import type { CategoryKey, PlaceIconKey } from '@days/shared'
 import { pixelSvg } from './pixel'
 
 /**
@@ -72,4 +72,40 @@ export const testSprite = {
       '................',
     ]),
   ],
+}
+
+/** Landmark icons for Places on the map and in lists (12 × 12 pixel grid). */
+export const placeIcons: Record<PlaceIconKey, string> = {
+  pin: pixelSvg([
+    '....kkkk....', '...krrrrk...', '..krrrrrrk..', '..krrwwrrk..', '..krrwwrrk..', '..krrrrrrk..',
+    '...krrrrk...', '...krrrrk...', '....krrk....', '....krrk....', '.....kk.....', '............',
+  ]),
+  home: pixelSvg([
+    '.....kk.....', '....knnk....', '...knnnnk...', '..knnnnnnk..', '.knnnnnnnnk.', 'kkkkkkkkkkkk',
+    '.kwwwwwwwwk.', '.kwbbwwnnwk.', '.kwbbwwnnwk.', '.kwwwwwnnwk.', '.kkkkkkkkkk.', '............',
+  ]),
+  food: pixelSvg([
+    '...s.s.s....', '....s.s.s...', '...s.s.s....', '............', 'kkkkkkkkkkkk', 'kwwwwwwwwwwk',
+    'kyyyyyyyyyyk', '.kyyyyyyyyk.', '.kyyyyyyyyk.', '..kyyyyyyk..', '...kkkkkk...', '............',
+  ]),
+  park: pixelSvg([
+    '....kkkk....', '...kggggk...', '..kggggggk..', '.kggggggggk.', '.kggggggggk.', '..kggggggk..',
+    '...kkggkk...', '.....nn.....', '.....nn.....', '.....nn.....', '..gggggggg..', '............',
+  ]),
+  mountain: pixelSvg([
+    '............', '.....kk.....', '....kwwk....', '...kwwssk...', '...kssssk...', '..kssssssk..',
+    '..kssssssk..', '.kssssssssk.', '.kssssssssk.', 'kssssssssssk', 'kkkkkkkkkkkk', '............',
+  ]),
+  water: pixelSvg([
+    '............', '............', '.bb...bb....', 'b..b.b..b.b.', '....b....b..', '............',
+    '..bb...bb...', '.b..b.b..b.b', '...b....b...', '............', 'bbbbbbbbbbbb', '............',
+  ]),
+  city: pixelSvg([
+    '............', '...kkkk.....', '...kwwk.kkk.', '...kbwk.kwk.', '...kwwk.kbk.', 'kkkkbwk.kwk.',
+    'kwwkwwkkkbk.', 'kbwkbwkwkwk.', 'kwwkwwkbkbk.', 'kbwkbwkwkwk.', 'kkkkkkkkkkk.', '............',
+  ]),
+  station: pixelSvg([
+    '............', '..kkkkkkkk..', '.krrrrrrrrk.', '.krwwrrwwrk.', '.krwwrrwwrk.', '.krrrrrrrrk.',
+    '.krrrrrrrrk.', '.kryrrrryrk.', '.kkkkkkkkkk.', '..kk....kk..', 'ssssssssssss', '............',
+  ]),
 }

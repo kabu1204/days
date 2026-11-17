@@ -5,7 +5,7 @@ import type { Lang } from '@days/shared'
 import { EXPORT_URL, api } from '../../api/client'
 import { copyText, currentOrigin, downloadUrl } from '../../browser/photo'
 import { getLang, setLang, useT } from '../../i18n'
-import { ROUTES, clearStatus, loadStatus, useMember, useStatus } from '../../state/session'
+import { ROUTES, clearStatus, getMapLowRes, loadStatus, setMapLowRes, useMember, useStatus } from '../../state/session'
 import { Button, Field, Frame, TextInput, TopBar, useToast } from '../../ui'
 
 export default function SettingsPage() {
@@ -15,6 +15,7 @@ export default function SettingsPage() {
   const [name, setName] = useState<string | null>(null)
   const [link, setLink] = useState('')
   const [toast, showToast] = useToast()
+  const [lowRes, setLowRes] = useState(getMapLowRes)
 
   if (!me || !status) return <View className="page muted">{t('common.loading')}</View>
   const partner = status.members.find((m) => m.id !== me.id)
@@ -59,6 +60,12 @@ export default function SettingsPage() {
             </Button>
           </View>
         </Field>
+        <Field label={t('settings.mapStyle')} hint={t('settings.mapStyle.hint')}>
+          <View className="row">
+            <Button small selected={lowRes} onClick={() => { setMapLowRes(true); setLowRes(true) }} testId="map-pixel-on">{t('settings.mapStyle.pixel')}</Button>
+            <Button small selected={!lowRes} onClick={() => { setMapLowRes(false); setLowRes(false) }} testId="map-pixel-off">{t('settings.mapStyle.smooth')}</Button>
+          </View>
+        </Field>
         <Field label={t('settings.language')}>
           <View className="row">
             <Button small selected={lang === 'zh-CN'} onClick={() => chooseLang('zh-CN')} testId="lang-zh">中文</Button>
@@ -91,6 +98,7 @@ export default function SettingsPage() {
         <View className="small muted" style={{ marginBottom: '6px' }}>{t('settings.export.text')}</View>
         <Button block kind="calm" onClick={() => downloadUrl(EXPORT_URL)} testId="export">{t('settings.export')}</Button>
         <Button block onClick={() => Taro.navigateTo({ url: ROUTES.importer })} testId="open-import">{t('settings.import')}</Button>
+        <Button block kind="plain" onClick={() => Taro.navigateTo({ url: ROUTES.places })} testId="open-places">{t('places.title')}</Button>
         <Button block kind="plain" onClick={() => Taro.navigateTo({ url: ROUTES.trash })} testId="open-trash">{t('settings.trash')}</Button>
       </Frame>
 

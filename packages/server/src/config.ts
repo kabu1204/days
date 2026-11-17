@@ -15,6 +15,11 @@ export interface Config {
   /** When set, creating the first account requires this value. */
   setupToken: string | null
   maxUploadBytes: number
+  /**
+   * File name of the map tile file in `DATA_DIR/tiles/`. When null, the first
+   * `.pmtiles` file found there is used.
+   */
+  mapTiles: string | null
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -26,5 +31,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     cookieSecure: env.COOKIE_SECURE === '1' || env.COOKIE_SECURE === 'true',
     setupToken: env.SETUP_TOKEN || null,
     maxUploadBytes: Number(env.MAX_UPLOAD_MB ?? 60) * 1024 * 1024,
+    mapTiles: env.MAP_TILES || null,
   }
 }

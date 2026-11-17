@@ -1,13 +1,14 @@
 import { useRef, useState } from 'react'
 import { Image, Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { groupPhotos, todayLocal, type CategoryKey } from '@days/shared'
+import { centroid, groupPhotos, nearbyPlaces, todayLocal, type CategoryKey, type LatLon, type Place } from '@days/shared'
 import { CATEGORY_KEYS } from '@days/shared'
 import { api, runPool, uploadPhoto } from '../../api/client'
 import { pickImages, readLocalPhoto, releaseLocalPhotos, type LocalPhoto } from '../../browser/photo'
 import { useT } from '../../i18n'
-import { ROUTES, timelineView, useMember } from '../../state/session'
-import { Button, CategoryIcon, DateDialog, Dialog, Frame, Progress, TextInput, TopBar, cx } from '../../ui'
+import { ROUTES, getMapLowRes, timelineView, useMember, useStatus } from '../../state/session'
+import { Button, CategoryIcon, DateDialog, Dialog, Frame, PlaceTag, Progress, TextInput, TopBar, cx } from '../../ui'
+import { PlacePicker, choiceIcon, choiceName, resolvePlace, type PlaceChoice } from '../../ui/PlacePicker'
 
 interface Group {
   key: string
@@ -18,6 +19,9 @@ interface Group {
   skipped: boolean
   expanded: boolean
   items: LocalPhoto[]
+  /** Mean position of the located photos, or null. */
+  point: LatLon | null
+  place: PlaceChoice | null
 }
 
 type Stage = 'select' | 'reading' | 'review' | 'importing' | 'done'
@@ -25,26 +29,36 @@ const PREVIEW_COUNT = 8
 let groupCounter = 0
 
 const defaultTitle = (date: string | null) => (date ? date.replace(/-/g, '.') : '')
-const newGroup = (date: string | null, items: LocalPhoto[]): Group => ({
-  key: `g${++groupCounter}`,
-  date,
-  title: defaultTitle(date),
-  category: 'daily',
-  skipped: false,
-  expanded: false,
-  items,
-})
+/** A saved Place within about 100 m of the group's photos is proposed. */
+const newGroup = (date: string | null, items: LocalPhoto[], places: Place[]): Group => {
+  const point = centroid(items)
+  const near = point ? nearbyPlaces(places, point)[0] : undefined
+  return {
+    key: `g${++groupCounter}`,
+    date,
+    title: defaultTitle(date),
+    category: 'daily',
+    skipped: false,
+    expanded: false,
+    items,
+    point,
+    place: near ? { kind: 'existing', place: near } : null,
+  }
+}
 
 export default function ImportPage() {
   const t = useT()
   const me = useMember()
+  const status = useStatus()
   const [stage, setStage] = useState<Stage>('select')
   const [groups, setGroups] = useState<Group[]>([])
   const [progress, setProgress] = useState({ done: 0, total: 0 })
   const [dateFor, setDateFor] = useState<string | null>(null)
   const [photoMenu, setPhotoMenu] = useState<{ group: string; index: number } | null>(null)
   const [result, setResult] = useState<{ memories: number; photos: number; failed: string[] } | null>(null)
+  const [placeFor, setPlaceFor] = useState<string | null>(null)
   const all = useRef<LocalPhoto[]>([])
+  const places = useRef<Place[]>([])
 
   if (!me) return <View className="page wide muted">{t('common.loading')}</View>
 
@@ -61,7 +75,8 @@ export default function ImportPage() {
       if (done % 5 === 0 || done === files.length) setProgress({ done, total: files.length })
     })
     all.current = [...all.current, ...read]
-    const proposed = groupPhotos(read).map((g) => newGroup(g.date, g.items))
+    places.current = (await api.places().catch(() => ({ places: places.current }))).places
+    const proposed = groupPhotos(read).map((g) => newGroup(g.date, g.items, places.current))
     setGroups((existing) => [...existing, ...proposed])
     setStage('review')
   }
@@ -73,7 +88,8 @@ export default function ImportPage() {
     setGroups((gs) => {
       const i = gs.findIndex((g) => g.key === key)
       if (i <= 0) return gs
-      const merged = { ...gs[i - 1], items: [...gs[i - 1].items, ...gs[i].items] }
+      const items = [...gs[i - 1].items, ...gs[i].items]
+      const merged = { ...gs[i - 1], items, point: centroid(items) }
       return [...gs.slice(0, i - 1), merged, ...gs.slice(i + 1)]
     })
 
@@ -81,9 +97,10 @@ export default function ImportPage() {
     setGroups((gs) => {
       const i = gs.findIndex((g) => g.key === key)
       if (i < 0 || index <= 0) return gs
-      const head = { ...gs[i], items: gs[i].items.slice(0, index) }
+      const headItems = gs[i].items.slice(0, index)
+      const head = { ...gs[i], items: headItems, point: centroid(headItems) }
       const tailItems = gs[i].items.slice(index)
-      const tail = newGroup(tailItems[0].takenAt?.slice(0, 10) ?? gs[i].date, tailItems)
+      const tail = newGroup(tailItems[0].takenAt?.slice(0, 10) ?? gs[i].date, tailItems, places.current)
       tail.expanded = gs[i].expanded
       return [...gs.slice(0, i), head, tail, ...gs.slice(i + 1)]
     })
@@ -91,7 +108,11 @@ export default function ImportPage() {
   const removePhoto = (key: string, index: number) =>
     setGroups((gs) =>
       gs
-        .map((g) => (g.key === key ? { ...g, items: g.items.filter((_, j) => j !== index) } : g))
+        .map((g) => {
+          if (g.key !== key) return g
+          const items = g.items.filter((_, j) => j !== index)
+          return { ...g, items, point: centroid(items) }
+        })
         .filter((g) => g.items.length > 0),
     )
 
@@ -108,11 +129,22 @@ export default function ImportPage() {
     const failed: string[] = []
     let lastMonth: string | null = null
     setProgress({ done, total })
+    // New Places with the same name in one import become one Place.
+    const created = new Map<string, number>()
+    const placeIdOf = async (choice: PlaceChoice | null) => {
+      if (choice?.kind !== 'new') return resolvePlace(choice)
+      const known = created.get(choice.name)
+      if (known !== undefined) return known
+      const id = (await resolvePlace(choice))!
+      created.set(choice.name, id)
+      return id
+    }
     for (const g of active) {
       const date = g.date ?? todayLocal()
       let memoryId: number
       try {
-        memoryId = (await api.createMemory({ title: g.title.trim() || defaultTitle(date), startDate: date, category: g.category })).id
+        const placeId = await placeIdOf(g.place)
+        memoryId = (await api.createMemory({ title: g.title.trim() || defaultTitle(date), startDate: date, category: g.category, placeId })).id
         memories++
         lastMonth = date.slice(0, 7)
       } catch {
@@ -140,6 +172,13 @@ export default function ImportPage() {
   }
 
   const dateGroup = groups.find((g) => g.key === dateFor)
+  const placeGroup = groups.find((g) => g.key === placeFor)
+  // Places named in this import are offered to the other groups as well.
+  const pending: Place[] = groups
+    .map((g) => g.place)
+    .filter((c): c is Extract<PlaceChoice, { kind: 'new' }> => c?.kind === 'new')
+    .filter((c, i, list) => list.findIndex((x) => x.name === c.name) === i)
+    .map((c, i) => ({ ...c, id: -(i + 1), memoryCount: 0, firstDate: null, lastDate: null }))
   const menuGroup = photoMenu ? groups.find((g) => g.key === photoMenu.group) : null
 
   return (
@@ -183,6 +222,11 @@ export default function ImportPage() {
                   >
                     <CategoryIcon category={g.category} />
                     <Text className="small">{t(`category.${g.category}`)}</Text>
+                  </Button>
+                </View>
+                <View className="row wrap" style={{ marginTop: '6px' }}>
+                  <Button small kind="plain" onClick={() => setPlaceFor(g.key)} testId="group-place">
+                    {g.place ? <PlaceTag icon={choiceIcon(g.place)} name={choiceName(g.place)} /> : t('place.noPlace')}
                   </Button>
                 </View>
                 <View className="row wrap small muted" style={{ marginTop: '6px' }}>
@@ -245,6 +289,24 @@ export default function ImportPage() {
             const followsDate = dateGroup.title === defaultTitle(dateGroup.date)
             update(dateGroup.key, { date: d, title: followsDate ? defaultTitle(d) : dateGroup.title })
             setDateFor(null)
+          }}
+        />
+      ) : null}
+
+      {placeGroup ? (
+        <PlacePicker
+          places={[...places.current, ...pending]}
+          point={placeGroup.point}
+          tilesUrl={status?.mapTiles ?? null}
+          lowRes={getMapLowRes()}
+          onClose={() => setPlaceFor(null)}
+          onPick={(choice) => {
+            // A Place named earlier in this import is still new; it is created once.
+            const named = choice?.kind === 'existing' && choice.place.id < 0 ? pending.find((p) => p.id === choice.place.id) : null
+            update(placeGroup.key, {
+              place: named ? { kind: 'new', name: named.name, city: named.city, icon: named.icon, latitude: named.latitude, longitude: named.longitude } : choice,
+            })
+            setPlaceFor(null)
           }}
         />
       ) : null}
