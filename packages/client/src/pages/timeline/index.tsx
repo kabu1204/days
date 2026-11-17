@@ -6,12 +6,15 @@ import { api, photoUrl } from '../../api/client'
 import { logo } from '../../assets/manifest'
 import { scrollToId } from '../../browser/dom'
 import { useT } from '../../i18n'
-import { ROUTES, timelineView, useMember } from '../../state/session'
+import { ROUTES, timelineView, useMember, useStatus } from '../../state/session'
 import { Button, CategoryIcon, Frame, Icon, cx, formatDate } from '../../ui'
+import { PartyStage } from '../../ui/Characters'
+import { DecorLayer, NewMark, ReactionSummary } from '../../ui/Stickers'
 
 export default function TimelinePage() {
   const t = useT()
   const me = useMember()
+  const status = useStatus()
   const [summary, setSummary] = useState<TimelineSummary | null>(null)
   const [month, setMonth] = useState<string>(timelineView.month ?? todayLocal().slice(0, 7))
   const [memories, setMemories] = useState<Memory[] | null>(null)
@@ -69,6 +72,11 @@ export default function TimelinePage() {
   years.sort((a, b) => a.year - b.year)
   const current = years.find((y) => y.year === year)!
   const empty = summary.years.length === 0
+  const unseen = new Set(summary.unseenMonths)
+  const openMemory = (id: number) => {
+    timelineView.memoryId = id
+    Taro.navigateTo({ url: `${ROUTES.detail}?id=${id}` })
+  }
 
   const selectYear = (y: number) => {
     const entry = years.find((e) => e.year === y)!
@@ -110,10 +118,12 @@ export default function TimelinePage() {
               >
                 <Text className="y">{y.year}</Text>
                 <Text className="n">{y.total > 0 ? y.total : '·'}</Text>
+                {summary.unseenMonths.some((m) => m.startsWith(`${y.year}-`)) ? <View className="new-dot" data-testid={`year-new-${y.year}`} /> : null}
               </View>
             ))}
           </View>
 
+          <PartyStage status={status} meId={me.id} position={monthIndex} t={t} onOpenMemory={openMemory} />
           <Frame className="ruler">
             {current.months.map((n, i) => (
               <View
@@ -124,6 +134,7 @@ export default function TimelinePage() {
               >
                 <View className="lamp" />
                 <Text>{i + 1}</Text>
+                {unseen.has(`${year}-${pad2(i + 1)}`) ? <View className="new-dot" data-testid={`month-new-${i + 1}`} /> : null}
               </View>
             ))}
           </Frame>
@@ -143,14 +154,13 @@ export default function TimelinePage() {
                   key={m.id}
                   id={`memory-card-${m.id}`}
                   className={cx('card', m.id === timelineView.memoryId && 'selected')}
-                  onClick={() => {
-                    timelineView.memoryId = m.id
-                    Taro.navigateTo({ url: `${ROUTES.detail}?id=${m.id}` })
-                  }}
+                  onClick={() => openMemory(m.id)}
                 >
+                  {m.unseen ? <NewMark label={t('common.new')} /> : null}
                   {m.photos.length > 0 ? (
                     <View className="cover">
                       <Image className="cover-img" src={photoUrl(m.photos[0].id, 'medium')} mode="aspectFill" lazyLoad />
+                      <DecorLayer stickers={m.stickers} size={36} />
                       {m.photos.length > 1 ? <Text className="count">{m.photos.length}</Text> : null}
                     </View>
                   ) : (
@@ -167,6 +177,7 @@ export default function TimelinePage() {
                         {m.place ? ` · ${m.place.name}` : ''}
                       </View>
                     </View>
+                    <ReactionSummary stickers={m.stickers} commentCount={m.commentCount} />
                   </View>
                 </Frame>
               ))}

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   PLACE_SUGGEST_METERS,
+  daysBetween,
+  dayPeriod,
+  excerpt,
+  nextOccurrence,
+  planBubbles,
   centroid,
   clusterPoints,
   nearbyPlaces,
@@ -100,5 +105,46 @@ describe('places', () => {
   it('projects positions like the map does', () => {
     expect(projectToPixels({ latitude: 0, longitude: 0 }, 0)).toEqual({ x: 128, y: 128 })
     expect(projectToPixels({ latitude: 0, longitude: 180 }, 1).x).toBe(512)
+  })
+})
+
+describe('key dates and speech bubbles', () => {
+  it('finds the next yearly occurrence', () => {
+    expect(nextOccurrence('2019-05-20', '2026-05-10')).toEqual({ date: '2026-05-20', days: 10, years: 7 })
+    expect(nextOccurrence('2019-05-20', '2026-05-20')).toEqual({ date: '2026-05-20', days: 0, years: 7 })
+    expect(nextOccurrence('2019-05-20', '2026-05-21')).toEqual({ date: '2027-05-20', days: 364, years: 8 })
+    // 29 February falls on 28 February in other years.
+    expect(nextOccurrence('2020-02-29', '2026-02-01').date).toBe('2026-02-28')
+    expect(nextOccurrence('2020-02-29', '2028-02-01').date).toBe('2028-02-29')
+    // A date that has not yet happened is counted down to the date itself.
+    expect(nextOccurrence('2027-01-10', '2026-12-31')).toEqual({ date: '2027-01-10', days: 10, years: 0 })
+    expect(daysBetween('2026-12-31', '2027-01-01')).toBe(1)
+  })
+  it('shortens a note to its first line', () => {
+    expect(excerpt('\n  first line  \nsecond')).toBe('first line')
+    expect(excerpt('一二三四五六', 4)).toBe('一二三…')
+  })
+  it('orders the lines: key date today, this day in earlier years, countdowns, then quotes and everyday lines', () => {
+    const bubbles = planBubbles(
+      {
+        keyDates: [
+          { id: 1, label: 'First date', date: '2019-05-20' },
+          { id: 2, label: 'Birthday', date: '1995-06-01' },
+          { id: 3, label: 'Far away', date: '1995-12-01' },
+        ],
+        onThisDay: [{ memoryId: 7, title: 'Picnic', startDate: '2021-05-20', createdBy: 2 }],
+        quotes: [{ memoryId: 8, text: 'So windy', speakerId: 1, date: '2021-07-15' }],
+      },
+      '2026-05-20',
+      9,
+      () => 0,
+    )
+    expect(bubbles.map((b) => b.kind)).toEqual(['keyDateToday', 'onThisDay', 'keyDateSoon', 'everyday', 'quote', 'everyday'])
+    expect(bubbles[0]).toEqual({ kind: 'keyDateToday', label: 'First date', years: 7 })
+    expect(bubbles[1]).toMatchObject({ years: 5, speakerId: 2 })
+    expect(bubbles[2]).toEqual({ kind: 'keyDateSoon', label: 'Birthday', days: 12 })
+    expect(bubbles[3]).toEqual({ kind: 'everyday', period: 'morning', line: 1 })
+    expect(dayPeriod(23)).toBe('night')
+    expect(dayPeriod(14)).toBe('day')
   })
 })

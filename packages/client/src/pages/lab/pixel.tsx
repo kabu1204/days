@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import { CATEGORY_KEYS } from '@days/shared'
-import { testSprite } from '../../assets/manifest'
+import { characterSheets, stickerIcons } from '../../assets/manifest'
+import { frameStyle } from '../../browser/sprites'
 import { deviceInfo } from '../../browser/photo'
 import { useT } from '../../i18n'
 import { Button, CategoryIcon, Frame, TopBar } from '../../ui'
@@ -12,7 +13,7 @@ export default function LabPixelPage() {
   const [frame, setFrame] = useState(0)
   const info = deviceInfo()
   useEffect(() => {
-    const timer = setInterval(() => setFrame((f) => (f + 1) % testSprite.frames.length), 400)
+    const timer = setInterval(() => setFrame((f) => (f + 1) % 4), 125)
     return () => clearInterval(timer)
   }, [])
 
@@ -41,12 +42,17 @@ export default function LabPixelPage() {
 
       <View style={{ margin: '18px 0' }}>
         {[1, 2, 3, 4, 6].map((scale) => (
-          <View
-            key={scale}
-            className="sprite"
-            data-testid={`sprite-${scale}`}
-            style={{ width: `${testSprite.size * scale}px`, height: `${testSprite.size * scale}px`, backgroundImage: `url("${testSprite.frames[frame]}")` }}
-          />
+          <View key={scale} className="row" style={{ marginBottom: '6px', alignItems: 'flex-end' }}>
+            <View className="sprite" data-testid={`sprite-${scale}`} style={frameStyle(characterSheets['partner-a'], scale, 4, frame)} />
+            <View className="sprite" style={frameStyle(characterSheets['partner-b'], scale, 6, frame)} />
+            <View className="sprite" style={frameStyle(characterSheets.pet, scale, 5, frame)} />
+          </View>
+        ))}
+      </View>
+
+      <View className="row wrap" style={{ marginBottom: '18px' }}>
+        {Object.entries(stickerIcons).map(([k, src]) => (
+          <View key={k} className="sprite" style={{ width: '48px', height: '48px', backgroundImage: `url("${src}")`, backgroundSize: '100% 100%' }} />
         ))}
       </View>
 

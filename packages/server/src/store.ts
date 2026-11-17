@@ -1,4 +1,4 @@
-import type { Memory, Photo, Place, PlaceIconKey, PlaceRef, TimelineSummary, YearSummary } from '@days/shared'
+import type { Comment, KeyDate, Memory, Photo, Place, PlaceIconKey, PlaceRef, StickerKey, StickerPlacement, TimelineSummary, YearSummary } from '@days/shared'
 import type { CategoryKey, DatePrecision } from '@days/shared'
 import type { Db } from './db/index'
 
@@ -15,7 +15,44 @@ export interface MemoryRow {
   updated_at: string
   deleted_at: string | null
   place_id: number | null
+  updated_by: number | null
 }
+
+export interface CommentRow {
+  id: number
+  memory_id: number
+  author_id: number
+  text: string
+  created_at: string
+  deleted_at: string | null
+}
+
+export interface StickerRow {
+  id: number
+  memory_id: number
+  sticker_key: StickerKey
+  placed_by: number
+  x: number | null
+  y: number | null
+  created_at: string
+}
+
+export interface KeyDateRow {
+  id: number
+  label: string
+  date: string
+  created_by: number
+}
+
+export const toComment = (r: CommentRow): Comment => ({
+  id: r.id, memoryId: r.memory_id, authorId: r.author_id, text: r.text, createdAt: r.created_at,
+})
+
+export const toSticker = (r: StickerRow): StickerPlacement => ({
+  id: r.id, memoryId: r.memory_id, key: r.sticker_key, placedBy: r.placed_by, x: r.x, y: r.y, createdAt: r.created_at,
+})
+
+export const toKeyDate = (r: KeyDateRow): KeyDate => ({ id: r.id, label: r.label, date: r.date, createdBy: r.created_by })
 
 export interface PlaceRow {
   id: number
@@ -62,6 +99,7 @@ export function toPhoto(r: PhotoRow): Photo {
     width: r.width,
     height: r.height,
     originalName: r.original_name,
+    createdAt: r.created_at,
   }
 }
 
@@ -69,7 +107,15 @@ export function toPlaceRef(r: PlaceRow): PlaceRef {
   return { id: r.id, name: r.name, latitude: r.latitude, longitude: r.longitude, icon: r.icon }
 }
 
-export function toMemory(r: MemoryRow, photos: PhotoRow[], place: PlaceRow | null = null): Memory {
+export interface MemoryExtras {
+  stickers: StickerRow[]
+  commentCount: number
+  unseen: boolean
+}
+
+const NO_EXTRAS: MemoryExtras = { stickers: [], commentCount: 0, unseen: false }
+
+export function toMemory(r: MemoryRow, photos: PhotoRow[], place: PlaceRow | null = null, extras: MemoryExtras = NO_EXTRAS): Memory {
   return {
     id: r.id,
     title: r.title,
@@ -85,6 +131,9 @@ export function toMemory(r: MemoryRow, photos: PhotoRow[], place: PlaceRow | nul
     placeId: r.place_id,
     place: place ? toPlaceRef(place) : null,
     photos: photos.map(toPhoto),
+    stickers: extras.stickers.map(toSticker),
+    commentCount: extras.commentCount,
+    unseen: extras.unseen,
   }
 }
 
@@ -115,11 +164,81 @@ export function placesById(db: Db, ids: (number | null)[]): Map<number, PlaceRow
   return map
 }
 
-/** Memories with their photos and their Place. */
-export function withPhotos(db: Db, rows: MemoryRow[]): Memory[] {
-  const photos = photosByMemory(db, rows.map((r) => r.id))
+const marks = (n: number) => new Array(n).fill('?').join(',')
+
+/** Memories with their photos, Place, stickers, comment count, and, for `viewerId`, the quiet marker. */
+export function withPhotos(db: Db, rows: MemoryRow[], viewerId: number | null = null): Memory[] {
+  const ids = rows.map((r) => r.id)
+  const photos = photosByMemory(db, ids)
   const places = placesById(db, rows.map((r) => r.place_id))
-  return rows.map((r) => toMemory(r, photos.get(r.id) ?? [], r.place_id === null ? null : places.get(r.place_id) ?? null))
+  const stickers = new Map<number, StickerRow[]>()
+  const comments = new Map<number, number>()
+  if (ids.length) {
+    for (const s of db.prepare(`SELECT * FROM sticker WHERE memory_id IN (${marks(ids.length)}) ORDER BY id`).all(...ids) as StickerRow[]) {
+      const list = stickers.get(s.memory_id)
+      if (list) list.push(s)
+      else stickers.set(s.memory_id, [s])
+    }
+    const counts = db
+      .prepare(`SELECT memory_id, count(*) AS n FROM comment WHERE deleted_at IS NULL AND memory_id IN (${marks(ids.length)}) GROUP BY memory_id`)
+      .all(...ids) as { memory_id: number; n: number }[]
+    for (const c of counts) comments.set(c.memory_id, c.n)
+  }
+  const unseen = viewerId === null ? new Set<number>() : unseenMemoryIds(db, viewerId, ids)
+  return rows.map((r) =>
+    toMemory(r, photos.get(r.id) ?? [], r.place_id === null ? null : places.get(r.place_id) ?? null, {
+      stickers: stickers.get(r.id) ?? [],
+      commentCount: comments.get(r.id) ?? 0,
+      unseen: unseen.has(r.id),
+    }),
+  )
+}
+
+/**
+ * The condition for the quiet marker: the other member created or changed
+ * the memory, or added a photo, comment, or sticker to it, after the viewer
+ * last opened it (or, if never opened, after the viewer joined).
+ */
+const UNSEEN_CONDITION = `(
+  (m.created_by != @me AND m.created_at > coalesce(s.seen_at, @since))
+  OR (m.updated_by IS NOT NULL AND m.updated_by != @me AND m.updated_at > coalesce(s.seen_at, @since))
+  OR EXISTS (SELECT 1 FROM photo p WHERE p.memory_id = m.id AND p.deleted_at IS NULL AND p.uploaded_by != @me AND p.created_at > coalesce(s.seen_at, @since))
+  OR EXISTS (SELECT 1 FROM comment c WHERE c.memory_id = m.id AND c.deleted_at IS NULL AND c.author_id != @me AND c.created_at > coalesce(s.seen_at, @since))
+  OR EXISTS (SELECT 1 FROM sticker k WHERE k.memory_id = m.id AND k.placed_by != @me AND k.created_at > coalesce(s.seen_at, @since))
+)`
+
+const UNSEEN_FROM = `FROM memory m LEFT JOIN memory_seen s ON s.memory_id = m.id AND s.member_id = @me`
+
+function viewerSince(db: Db, viewerId: number): string {
+  const row = db.prepare('SELECT seen_since, created_at FROM member WHERE id = ?').get(viewerId) as { seen_since: string | null; created_at: string } | undefined
+  return row?.seen_since ?? row?.created_at ?? ''
+}
+
+export function unseenMemoryIds(db: Db, viewerId: number, ids: number[]): Set<number> {
+  if (!ids.length) return new Set()
+  const params: Record<string, unknown> = { me: viewerId, since: viewerSince(db, viewerId) }
+  ids.forEach((id, i) => (params[`id${i}`] = id))
+  const rows = db
+    .prepare(`SELECT m.id ${UNSEEN_FROM} WHERE m.id IN (${ids.map((_, i) => `@id${i}`).join(',')}) AND ${UNSEEN_CONDITION}`)
+    .all(params) as { id: number }[]
+  return new Set(rows.map((r) => r.id))
+}
+
+/** When the viewer last opened a memory; before the first time, the time the viewer joined. */
+export function seenAt(db: Db, viewerId: number, memoryId: number): string {
+  const row = db.prepare('SELECT seen_at FROM memory_seen WHERE member_id = ? AND memory_id = ?').get(viewerId, memoryId) as { seen_at: string } | undefined
+  return row?.seen_at ?? viewerSince(db, viewerId)
+}
+
+export function markSeen(db: Db, viewerId: number, memoryId: number, at: string): void {
+  db.prepare(
+    `INSERT INTO memory_seen (member_id, memory_id, seen_at) VALUES (?, ?, ?)
+     ON CONFLICT (member_id, memory_id) DO UPDATE SET seen_at = excluded.seen_at`,
+  ).run(viewerId, memoryId, at)
+}
+
+export function liveComments(db: Db, memoryId: number): Comment[] {
+  return (db.prepare('SELECT * FROM comment WHERE memory_id = ? AND deleted_at IS NULL ORDER BY created_at, id').all(memoryId) as CommentRow[]).map(toComment)
 }
 
 const PLACE_SELECT = `SELECT p.*, count(m.id) AS memory_count, min(m.start_date) AS first_date, max(m.start_date) AS last_date
@@ -146,7 +265,7 @@ export function getMemoryRow(db: Db, id: number): MemoryRow | undefined {
   return db.prepare('SELECT * FROM memory WHERE id = ?').get(id) as MemoryRow | undefined
 }
 
-export function timelineSummary(db: Db): TimelineSummary {
+export function timelineSummary(db: Db, viewerId: number | null = null): TimelineSummary {
   const rows = db
     .prepare(
       `SELECT substr(start_date, 1, 4) AS y, substr(start_date, 6, 2) AS m, count(*) AS n
@@ -164,5 +283,12 @@ export function timelineSummary(db: Db): TimelineSummary {
     entry.months[Number(r.m) - 1] = r.n
     entry.total += r.n
   }
-  return { years: [...years.values()] }
+  let unseenMonths: string[] = []
+  if (viewerId !== null) {
+    const rows = db
+      .prepare(`SELECT DISTINCT substr(m.start_date, 1, 7) AS month ${UNSEEN_FROM} WHERE m.deleted_at IS NULL AND ${UNSEEN_CONDITION} ORDER BY month`)
+      .all({ me: viewerId, since: viewerSince(db, viewerId) }) as { month: string }[]
+    unseenMonths = rows.map((r) => r.month)
+  }
+  return { years: [...years.values()], unseenMonths }
 }

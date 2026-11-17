@@ -1,5 +1,7 @@
-import type { CategoryKey, PlaceIconKey } from '@days/shared'
+import type { CategoryKey, PlaceIconKey, StickerKey } from '@days/shared'
+import { PLACEHOLDER_FRAME_SIZE, placeholderSheets } from './characters'
 import { pixelSvg } from './pixel'
+import { speechIcon, stickerArt } from './stickers'
 
 /**
  * The single source of all art used by the interface. Every entry is a
@@ -55,24 +57,24 @@ export const logo = pixelSvg([
   '..rrrrrrrr..', '...rrrrrr...', '....rrrr....', '.....rr.....', '............', '............',
 ])
 
-/** Two idle frames of the test sprite used by the pixel-rendering validation page. */
-export const testSprite = {
-  size: 16,
-  frames: [
-    pixelSvg([
-      '................', '.....kkkkkk.....', '....knnnnnnk....', '...knnnnnnnnk...', '...knppppppnk...',
-      '...kpkppppkpk...', '...kppppppppk...', '....kpprrppk....', '.....kkkkkk.....', '....kbbbbbbk....',
-      '...kpbbbbbbpk...', '...kpbbbbbbpk...', '....kbbbbbbk....', '....kssk.kssk...', '....kkkk.kkkk...',
-      '................',
-    ]),
-    pixelSvg([
-      '................', '................', '.....kkkkkk.....', '....knnnnnnk....', '...knnnnnnnnk...',
-      '...knppppppnk...', '...kpkppppkpk...', '...kppppppppk...', '....kpprrppk....', '.....kkkkkk.....',
-      '...kpbbbbbbpk...', '...kpbbbbbbpk...', '....kbbbbbbk....', '...kssk...kssk..', '...kkkk...kkkk..',
-      '................',
-    ]),
-  ],
+/** Sprite sheets for the partners and the pet (docs/asset-spec.md, Section 4). */
+export interface CharacterSheet {
+  src: string
+  frameWidth: number
+  frameHeight: number
 }
+export type CharacterKey = 'partner-a' | 'partner-b' | 'pet'
+export const characterSheets: Record<CharacterKey, CharacterSheet> = {
+  'partner-a': { src: placeholderSheets['partner-a'], frameWidth: PLACEHOLDER_FRAME_SIZE, frameHeight: PLACEHOLDER_FRAME_SIZE },
+  'partner-b': { src: placeholderSheets['partner-b'], frameWidth: PLACEHOLDER_FRAME_SIZE, frameHeight: PLACEHOLDER_FRAME_SIZE },
+  pet: { src: placeholderSheets.pet, frameWidth: PLACEHOLDER_FRAME_SIZE, frameHeight: PLACEHOLDER_FRAME_SIZE },
+}
+
+/** Reaction and decorative stickers (16 × 16 pixel grid). */
+export const stickerIcons: Record<StickerKey, string> = stickerArt
+
+/** Speech icon shown with comment counts (12 × 12 pixel grid). */
+export { speechIcon }
 
 /** Landmark icons for Places on the map and in lists (12 × 12 pixel grid). */
 export const placeIcons: Record<PlaceIconKey, string> = {

@@ -3,6 +3,7 @@ import type { Memory } from '@days/shared'
 import { photoUrl } from '../api/client'
 import { useT } from '../i18n'
 import { Button, CategoryIcon, cx, formatDate } from './index'
+import { NewMark } from './Stickers'
 
 /** One memory in a list of memories at a Place. */
 export function MemoryRow(props: {
@@ -27,7 +28,10 @@ export function MemoryRow(props: {
         {m.photos.length ? <Image src={photoUrl(m.photos[0].id, 'thumb')} mode="aspectFill" lazyLoad /> : <CategoryIcon category={m.category} size={36} />}
       </View>
       <View className="grow">
-        <View className="ellipsis" data-testid="place-memory-title">{m.title}</View>
+        <View className="row tight">
+          <View className="ellipsis grow" data-testid="place-memory-title">{m.title}</View>
+          {m.unseen ? <NewMark label={t('common.new')} /> : null}
+        </View>
         <View className="small muted">{formatDate(m.startDate, m.datePrecision, m.endDate)}</View>
       </View>
       {props.selecting ? (

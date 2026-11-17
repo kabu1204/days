@@ -1,5 +1,6 @@
 import type { CategoryKey } from './categories'
 import type { PlaceIconKey } from './places'
+import type { StickerKey } from './social'
 
 export type Lang = 'zh-CN' | 'en'
 export const LANGS: Lang[] = ['zh-CN', 'en']
@@ -29,6 +30,7 @@ export interface Photo {
   width: number
   height: number
   originalName: string
+  createdAt: string
 }
 
 export interface Memory {
@@ -48,6 +50,49 @@ export interface Memory {
   /** The memory's Place, or null. */
   place: PlaceRef | null
   photos: Photo[]
+  /** Reactions and decorative stickers. */
+  stickers: StickerPlacement[]
+  commentCount: number
+  /**
+   * True when the other member added or changed something in this memory
+   * after the requesting member last opened it (the quiet marker).
+   */
+  unseen: boolean
+}
+
+/** A memory with its comments, as shown on the memory page. */
+export interface MemoryDetail extends Memory {
+  comments: Comment[]
+  /** When the requesting member last opened this memory; items by the other member after this time are new. */
+  seenAt: string
+}
+
+/** A comment, shown as a dialogue box. */
+export interface Comment {
+  id: number
+  memoryId: number
+  authorId: number
+  text: string
+  createdAt: string
+}
+
+/** A sticker on a memory. Reactions have no position; decorative stickers have a position on the cover (0–1). */
+export interface StickerPlacement {
+  id: number
+  memoryId: number
+  key: StickerKey
+  placedBy: number
+  x: number | null
+  y: number | null
+  createdAt: string
+}
+
+/** A date that is counted down in speech bubbles, every year. */
+export interface KeyDate {
+  id: number
+  label: string
+  date: string
+  createdBy: number
 }
 
 export interface MemoryInput {
@@ -96,6 +141,8 @@ export interface YearSummary {
 
 export interface TimelineSummary {
   years: YearSummary[]
+  /** Months (`YYYY-MM`) with memories that carry the quiet marker for the requesting member. */
+  unseenMonths: string[]
 }
 
 export interface StatusResponse {

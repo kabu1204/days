@@ -19,6 +19,8 @@ export interface MemberRow {
   display_name: string
   sprite_id: string
   lang: Lang
+  /** Items older than this are never marked as new for this member. */
+  seen_since: string | null
 }
 
 export type AppEnv = { Variables: { member: MemberRow } }

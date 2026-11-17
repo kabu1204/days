@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import type { Lang } from '@days/shared'
-import { EXPORT_URL, api } from '../../api/client'
+import { KEY_DATE_LABEL_MAX_LENGTH, todayLocal, type KeyDate, type Lang } from '@days/shared'
+import { ApiFailure, EXPORT_URL, api } from '../../api/client'
 import { copyText, currentOrigin, downloadUrl } from '../../browser/photo'
-import { getLang, setLang, useT } from '../../i18n'
+import { errorText, getLang, setLang, useT } from '../../i18n'
 import { ROUTES, clearStatus, getMapLowRes, loadStatus, setMapLowRes, useMember, useStatus } from '../../state/session'
-import { Button, Field, Frame, TextInput, TopBar, useToast } from '../../ui'
+import { Button, DateDialog, Field, Frame, TextInput, TopBar, formatDate, useToast } from '../../ui'
+import { forgetBubbles } from '../../ui/Characters'
 
 export default function SettingsPage() {
   const t = useT()
@@ -93,6 +94,8 @@ export default function SettingsPage() {
         )}
       </Frame>
 
+      <KeyDates onError={(code) => showToast(errorText(t, code))} />
+
       <View className="section-title">{t('settings.data')}</View>
       <Frame>
         <View className="small muted" style={{ marginBottom: '6px' }}>{t('settings.export.text')}</View>
@@ -114,5 +117,73 @@ export default function SettingsPage() {
       </View>
       {toast}
     </View>
+  )
+}
+
+/** Days that come back every year; the characters mention them in speech bubbles. */
+function KeyDates(props: { onError: (code: string | undefined) => void }) {
+  const t = useT()
+  const [list, setList] = useState<KeyDate[] | null>(null)
+  const [label, setLabel] = useState('')
+  const [date, setDate] = useState(todayLocal())
+  const [picking, setPicking] = useState(false)
+  const load = useCallback(() => {
+    api.keyDates().then((r) => setList(r.keyDates), () => undefined)
+  }, [])
+  useEffect(load, [load])
+  const fail = (e: unknown) => props.onError(e instanceof ApiFailure ? e.code : undefined)
+
+  const add = () => {
+    const value = label.trim()
+    if (!value) return
+    api.createKeyDate({ label: value, date }).then(() => {
+      setLabel('')
+      forgetBubbles()
+      load()
+    }, fail)
+  }
+  const remove = (id: number) => {
+    api.deleteKeyDate(id).then(() => {
+      forgetBubbles()
+      load()
+    }, fail)
+  }
+
+  return (
+    <>
+      <View className="section-title">{t('settings.keyDates')}</View>
+      <Frame>
+        <View className="small muted" style={{ marginBottom: '6px' }}>{t('settings.keyDates.text')}</View>
+        {list && !list.length ? <View className="muted small">{t('settings.keyDates.none')}</View> : null}
+        {(list ?? []).map((k) => (
+          <View key={k.id} className="row key-date" data-testid="key-date">
+            <Text className="grow ellipsis">{k.label}</Text>
+            <Text className="small muted">{formatDate(k.date, 'day')}</Text>
+            <Button small kind="plain" onClick={() => remove(k.id)} testId="key-date-delete">{t('common.delete')}</Button>
+          </View>
+        ))}
+        <Field label={t('settings.keyDates.label')}>
+          <TextInput name="keyDateLabel" value={label} onChange={setLabel} placeholder={t('settings.keyDates.label.placeholder')} maxLength={KEY_DATE_LABEL_MAX_LENGTH} />
+        </Field>
+        <Field label={t('settings.keyDates.date')}>
+          <View className="row">
+            <Button small onClick={() => setPicking(true)} testId="key-date-date">{formatDate(date, 'day')}</Button>
+            <View className="grow" />
+            <Button small kind="calm" disabled={!label.trim()} onClick={add} testId="key-date-add">{t('settings.keyDates.add')}</Button>
+          </View>
+        </Field>
+      </Frame>
+      {picking ? (
+        <DateDialog
+          value={date}
+          precision="day"
+          onPick={(d) => {
+            setDate(d)
+            setPicking(false)
+          }}
+          onClose={() => setPicking(false)}
+        />
+      ) : null}
+    </>
   )
 }

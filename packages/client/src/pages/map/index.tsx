@@ -9,6 +9,7 @@ import { LazyMap, type MapView } from '../../browser/LazyMap'
 import { useT } from '../../i18n'
 import { ROUTES, getMapLowRes, mapView, openTimelineAt, timelineView, useMember, useStatus } from '../../state/session'
 import { Button, Frame, PlaceIcon, TopBar, formatDate } from '../../ui'
+import { partyMembers } from '../../ui/Characters'
 import { MemoryRow } from '../../ui/MemoryRow'
 
 const dateSpan = (p: Place) =>
@@ -73,6 +74,12 @@ export default function MapPage() {
     [places],
   )
 
+  const standing = (places ?? []).find((p) => p.id === selected)
+  const party = useMemo(
+    () => (standing ? { latitude: standing.latitude, longitude: standing.longitude, sheets: partyMembers(status).map((m) => m.sheet) } : null),
+    [standing?.latitude, standing?.longitude, status], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
   if (!me || !places || focus === undefined) return <View className="page muted">{t('common.loading')}</View>
 
   const place = list?.place
@@ -89,6 +96,7 @@ export default function MapPage() {
         places={shown}
         focus={focus}
         selectedId={selected}
+        party={party}
         cluster
         controls
         tilesUrl={status?.mapTiles ?? null}

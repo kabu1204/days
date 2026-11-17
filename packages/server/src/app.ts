@@ -8,14 +8,22 @@ import { compress } from 'hono/compress'
 import { z } from 'zod'
 import {
   CATEGORY_KEYS,
+  COMMENT_MAX_LENGTH,
+  KEY_DATE_LABEL_MAX_LENGTH,
   LANGS,
+  MAX_DECOR_STICKERS,
+  STICKER_KEYS,
+  excerpt,
+  isReactionKey,
   PLACE_ICON_KEYS,
   centroid,
   isValidDate,
   isValidMonth,
   nextMonthStart,
   normalizeStartDate,
+  type BubbleSources,
   type Member,
+  type MemoryDetail,
   type StatusResponse,
 } from '@days/shared'
 import {
@@ -41,11 +49,20 @@ import {
   getMemoryRow,
   getPlace,
   listPlaces,
+  liveComments,
+  markSeen,
+  seenAt,
   timelineSummary,
+  toComment,
+  toKeyDate,
   toPhoto,
+  toSticker,
   withPhotos,
+  type CommentRow,
+  type KeyDateRow,
   type MemoryRow,
   type PhotoRow,
+  type StickerRow,
 } from './store'
 import { serveClient } from './static'
 
@@ -162,10 +179,10 @@ export function createApp(db: Db, config: Config) {
       db.prepare('INSERT INTO space (id, created_at) VALUES (1, ?)').run(now)
       return db
         .prepare(
-          `INSERT INTO member (space_id, slot, username, password_hash, display_name, sprite_id, created_at)
-           VALUES (1, 1, ?, ?, ?, ?, ?)`,
+          `INSERT INTO member (space_id, slot, username, password_hash, display_name, sprite_id, created_at, seen_since)
+           VALUES (1, 1, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(input.username, passwordHash, input.displayName, SPRITES[0], now).lastInsertRowid as number
+        .run(input.username, passwordHash, input.displayName, SPRITES[0], now, now).lastInsertRowid as number
     })()
     if (memberId === null) return c.json({ error: 'already_initialized' }, 409)
     startSession(c, db, config, memberId)
@@ -193,10 +210,10 @@ export function createApp(db: Db, config: Config) {
       const now = nowIso()
       const memberId = db
         .prepare(
-          `INSERT INTO member (space_id, slot, username, password_hash, display_name, sprite_id, created_at)
-           VALUES (?, 2, ?, ?, ?, ?, ?)`,
+          `INSERT INTO member (space_id, slot, username, password_hash, display_name, sprite_id, created_at, seen_since)
+           VALUES (?, 2, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(inv.space_id, input.username, passwordHash, input.displayName, SPRITES[1], now).lastInsertRowid as number
+        .run(inv.space_id, input.username, passwordHash, input.displayName, SPRITES[1], now, now).lastInsertRowid as number
       db.prepare('UPDATE invitation SET used_at = ?, used_by = ? WHERE token_hash = ?').run(now, memberId, inv.token_hash)
       return { memberId }
     })()
@@ -290,7 +307,7 @@ export function createApp(db: Db, config: Config) {
 
   // ---- timeline and memories ----
 
-  app.get('/api/timeline/summary', (c) => c.json(timelineSummary(db)))
+  app.get('/api/timeline/summary', (c) => c.json(timelineSummary(db, c.get('member').id)))
 
   app.get('/api/memories', (c) => {
     const month = c.req.query('month')
@@ -301,7 +318,7 @@ export function createApp(db: Db, config: Config) {
          ORDER BY start_date, id`,
       )
       .all(`${month}-01`, nextMonthStart(month)) as MemoryRow[]
-    return c.json({ memories: withPhotos(db, rows) })
+    return c.json({ memories: withPhotos(db, rows, c.get('member').id) })
   })
 
   app.post('/api/memories', async (c) => {
@@ -319,7 +336,7 @@ export function createApp(db: Db, config: Config) {
       )
       .run(me.space_id, input.title, input.note, start, input.endDate, input.datePrecision, input.category, input.placeId, me.id, now, now)
       .lastInsertRowid as number
-    return c.json(withPhotos(db, [getMemoryRow(db, id)!])[0], 201)
+    return c.json(withPhotos(db, [getMemoryRow(db, id)!], c.get('member').id)[0], 201)
   })
 
   const placeExists = (id: number | null | undefined) =>
@@ -331,10 +348,21 @@ export function createApp(db: Db, config: Config) {
     return row && !row.deleted_at ? row : null
   }
 
+  /** The memory with its comments, and when the requesting member last opened it. */
   app.get('/api/memories/:id', (c) => {
     const row = liveMemory(c.req.param('id'))
     if (!row) return c.json({ error: 'not_found' }, 404)
-    return c.json(withPhotos(db, [row])[0])
+    const me = c.get('member').id
+    const detail: MemoryDetail = { ...withPhotos(db, [row], me)[0], comments: liveComments(db, row.id), seenAt: seenAt(db, me, row.id) }
+    return c.json(detail)
+  })
+
+  /** Records that the requesting member has opened the memory; clears its quiet marker. */
+  app.post('/api/memories/:id/seen', (c) => {
+    const row = liveMemory(c.req.param('id'))
+    if (!row) return c.json({ error: 'not_found' }, 404)
+    markSeen(db, c.get('member').id, row.id, nowIso())
+    return c.json({ ok: true })
   })
 
   // Both members may edit every memory. For text fields the most recent save is kept.
@@ -350,10 +378,11 @@ export function createApp(db: Db, config: Config) {
     if (!placeExists(input.placeId)) return c.json({ error: 'invalid_place' }, 400)
     const placeId = input.placeId === undefined ? row.place_id : input.placeId
     db.prepare(
-      `UPDATE memory SET title = ?, note = ?, start_date = ?, end_date = ?, date_precision = ?, category = ?, place_id = ?, updated_at = ?
+      `UPDATE memory SET title = ?, note = ?, start_date = ?, end_date = ?, date_precision = ?, category = ?, place_id = ?,
+         updated_at = ?, updated_by = ?
        WHERE id = ?`,
-    ).run(input.title ?? row.title, input.note ?? row.note, start, end, precision, input.category ?? row.category, placeId, nowIso(), row.id)
-    return c.json(withPhotos(db, [getMemoryRow(db, row.id)!])[0])
+    ).run(input.title ?? row.title, input.note ?? row.note, start, end, precision, input.category ?? row.category, placeId, nowIso(), c.get('member').id, row.id)
+    return c.json(withPhotos(db, [getMemoryRow(db, row.id)!], c.get('member').id)[0])
   })
 
   app.delete('/api/memories/:id', (c) => {
@@ -367,7 +396,7 @@ export function createApp(db: Db, config: Config) {
     const id = idParam(c.req.param('id'))
     const changed = id === null ? 0 : db.prepare('UPDATE memory SET deleted_at = NULL WHERE id = ? AND deleted_at IS NOT NULL').run(id).changes
     if (!changed) return c.json({ error: 'not_found' }, 404)
-    return c.json(withPhotos(db, [getMemoryRow(db, id!)!])[0])
+    return c.json(withPhotos(db, [getMemoryRow(db, id!)!], c.get('member').id)[0])
   })
 
   app.get('/api/trash', (c) => {
@@ -378,9 +407,16 @@ export function createApp(db: Db, config: Config) {
          WHERE p.deleted_at IS NOT NULL AND m.deleted_at IS NULL ORDER BY p.deleted_at DESC`,
       )
       .all() as (PhotoRow & { memory_title: string })[]
+    const comments = db
+      .prepare(
+        `SELECT c.*, m.title AS memory_title FROM comment c JOIN memory m ON m.id = c.memory_id
+         WHERE c.deleted_at IS NOT NULL AND m.deleted_at IS NULL ORDER BY c.deleted_at DESC`,
+      )
+      .all() as (CommentRow & { memory_title: string })[]
     return c.json({
-      memories: withPhotos(db, memories),
+      memories: withPhotos(db, memories, c.get('member').id),
       photos: photos.map((p) => ({ ...toPhoto(p), memoryTitle: p.memory_title, deletedAt: p.deleted_at })),
+      comments: comments.map((k) => ({ ...toComment(k), memoryTitle: k.memory_title, deletedAt: k.deleted_at })),
     })
   })
 
@@ -442,7 +478,7 @@ export function createApp(db: Db, config: Config) {
     const rows = db
       .prepare('SELECT * FROM memory WHERE place_id = ? AND deleted_at IS NULL ORDER BY start_date, id')
       .all(place.id) as MemoryRow[]
-    return c.json({ place, memories: withPhotos(db, rows) })
+    return c.json({ place, memories: withPhotos(db, rows, c.get('member').id) })
   })
 
   /** Moves every memory of this Place to another Place and removes this one. */
@@ -504,6 +540,149 @@ export function createApp(db: Db, config: Config) {
       return newId
     })()
     return c.json(getPlace(db, id), 201)
+  })
+
+  // ---- comments ----
+
+  app.post('/api/memories/:id/comments', async (c) => {
+    const memory = liveMemory(c.req.param('id'))
+    if (!memory) return c.json({ error: 'not_found' }, 404)
+    const input = await readJson(c, z.object({ text: z.string().trim().min(1).max(COMMENT_MAX_LENGTH) }))
+    if (!input) return c.json({ error: 'invalid_input' }, 400)
+    const id = db
+      .prepare('INSERT INTO comment (memory_id, author_id, text, created_at) VALUES (?, ?, ?, ?)')
+      .run(memory.id, c.get('member').id, input.text, nowIso()).lastInsertRowid as number
+    return c.json(toComment(db.prepare('SELECT * FROM comment WHERE id = ?').get(id) as CommentRow), 201)
+  })
+
+  const commentParam = (idText: string) => {
+    const id = idParam(idText)
+    return id === null ? undefined : (db.prepare('SELECT * FROM comment WHERE id = ?').get(id) as CommentRow | undefined)
+  }
+
+  // A comment is its author's words: only the author removes or restores it.
+  app.delete('/api/comments/:id', (c) => {
+    const row = commentParam(c.req.param('id'))
+    if (!row || row.deleted_at) return c.json({ error: 'not_found' }, 404)
+    if (row.author_id !== c.get('member').id) return c.json({ error: 'not_author' }, 403)
+    db.prepare('UPDATE comment SET deleted_at = ? WHERE id = ?').run(nowIso(), row.id)
+    return c.json({ ok: true })
+  })
+
+  app.post('/api/comments/:id/restore', (c) => {
+    const row = commentParam(c.req.param('id'))
+    if (!row || !row.deleted_at) return c.json({ error: 'not_found' }, 404)
+    if (row.author_id !== c.get('member').id) return c.json({ error: 'not_author' }, 403)
+    db.prepare('UPDATE comment SET deleted_at = NULL WHERE id = ?').run(row.id)
+    return c.json(toComment({ ...row, deleted_at: null }))
+  })
+
+  // ---- stickers ----
+
+  /**
+   * Places a sticker. A reaction has no position and is placed at most once
+   * per member (placing it again returns the existing one); a decorative
+   * sticker needs a position on the cover.
+   */
+  app.post('/api/memories/:id/stickers', async (c) => {
+    const memory = liveMemory(c.req.param('id'))
+    if (!memory) return c.json({ error: 'not_found' }, 404)
+    const input = await readJson(
+      c,
+      z.object({ key: z.enum(STICKER_KEYS), x: z.number().min(0).max(1).optional(), y: z.number().min(0).max(1).optional() }),
+    )
+    if (!input) return c.json({ error: 'invalid_input' }, 400)
+    const me = c.get('member').id
+    const reaction = isReactionKey(input.key)
+    const hasPosition = input.x !== undefined && input.y !== undefined
+    if (reaction === hasPosition) return c.json({ error: 'invalid_input' }, 400)
+    if (reaction) {
+      const existing = db
+        .prepare('SELECT * FROM sticker WHERE memory_id = ? AND sticker_key = ? AND placed_by = ? AND x IS NULL')
+        .get(memory.id, input.key, me) as StickerRow | undefined
+      if (existing) return c.json(toSticker(existing))
+    } else {
+      const placed = (db.prepare('SELECT count(*) AS n FROM sticker WHERE memory_id = ? AND x IS NOT NULL').get(memory.id) as { n: number }).n
+      if (placed >= MAX_DECOR_STICKERS) return c.json({ error: 'too_many_stickers' }, 409)
+    }
+    const id = db
+      .prepare('INSERT INTO sticker (memory_id, sticker_key, placed_by, x, y, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(memory.id, input.key, me, reaction ? null : input.x, reaction ? null : input.y, nowIso()).lastInsertRowid as number
+    return c.json(toSticker(db.prepare('SELECT * FROM sticker WHERE id = ?').get(id) as StickerRow), 201)
+  })
+
+  // A reaction belongs to the member who placed it; decorative stickers belong to the memory and either member may remove them.
+  app.delete('/api/stickers/:id', (c) => {
+    const id = idParam(c.req.param('id'))
+    const row = id === null ? undefined : (db.prepare('SELECT * FROM sticker WHERE id = ?').get(id) as StickerRow | undefined)
+    if (!row) return c.json({ error: 'not_found' }, 404)
+    if (row.x === null && row.placed_by !== c.get('member').id) return c.json({ error: 'not_author' }, 403)
+    db.prepare('DELETE FROM sticker WHERE id = ?').run(row.id)
+    return c.json({ ok: true })
+  })
+
+  // ---- key dates and speech bubbles ----
+
+  const keyDateInput = z.object({ label: z.string().trim().min(1).max(KEY_DATE_LABEL_MAX_LENGTH), date: dateString })
+
+  app.get('/api/key-dates', (c) => {
+    const rows = db.prepare('SELECT * FROM key_date ORDER BY substr(date, 6), id').all() as KeyDateRow[]
+    return c.json({ keyDates: rows.map(toKeyDate) })
+  })
+
+  app.post('/api/key-dates', async (c) => {
+    const input = await readJson(c, keyDateInput)
+    if (!input) return c.json({ error: 'invalid_input' }, 400)
+    const me = c.get('member')
+    const id = db
+      .prepare('INSERT INTO key_date (space_id, label, date, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(me.space_id, input.label, input.date, me.id, nowIso()).lastInsertRowid as number
+    return c.json(toKeyDate(db.prepare('SELECT * FROM key_date WHERE id = ?').get(id) as KeyDateRow), 201)
+  })
+
+  app.delete('/api/key-dates/:id', (c) => {
+    const id = idParam(c.req.param('id'))
+    const changed = id === null ? 0 : db.prepare('DELETE FROM key_date WHERE id = ?').run(id).changes
+    return changed ? c.json({ ok: true }) : c.json({ error: 'not_found' }, 404)
+  })
+
+  /**
+   * Material for the characters' speech bubbles on a given day (the client's
+   * local date): key dates, memories on the same day of earlier years, and a
+   * random sample of comments and note excerpts.
+   */
+  app.get('/api/bubbles', (c) => {
+    const date = c.req.query('date')
+    if (!isValidDate(date)) return c.json({ error: 'invalid_input' }, 400)
+    const keyDates = (db.prepare('SELECT * FROM key_date ORDER BY id').all() as KeyDateRow[]).map((k) => ({ id: k.id, label: k.label, date: k.date }))
+    const onThisDay = (
+      db
+        .prepare(
+          `SELECT id, title, start_date, created_by FROM memory
+           WHERE deleted_at IS NULL AND date_precision = 'day' AND substr(start_date, 6) = ? AND start_date < ?
+           ORDER BY start_date DESC, id LIMIT 5`,
+        )
+        .all(date.slice(5), date) as { id: number; title: string; start_date: string; created_by: number }[]
+    ).map((m) => ({ memoryId: m.id, title: m.title, startDate: m.start_date, createdBy: m.created_by }))
+    const fromComments = db
+      .prepare(
+        `SELECT c.memory_id, c.text, c.author_id AS speaker, m.start_date FROM comment c JOIN memory m ON m.id = c.memory_id
+         WHERE c.deleted_at IS NULL AND m.deleted_at IS NULL ORDER BY random() LIMIT 3`,
+      )
+      .all() as { memory_id: number; text: string; speaker: number; start_date: string }[]
+    const fromNotes = db
+      .prepare(
+        `SELECT id AS memory_id, note AS text, created_by AS speaker, start_date FROM memory
+         WHERE deleted_at IS NULL AND trim(note) != '' ORDER BY random() LIMIT 3`,
+      )
+      .all() as { memory_id: number; text: string; speaker: number; start_date: string }[]
+    const quotes = [...fromComments, ...fromNotes]
+      .map((q) => ({ memoryId: q.memory_id, text: excerpt(q.text), speakerId: q.speaker, date: q.start_date, order: Math.random() }))
+      .sort((a, b) => a.order - b.order)
+      .slice(0, 3)
+      .map(({ order: _order, ...q }) => q)
+    const body: BubbleSources = { keyDates, onThisDay, quotes }
+    return c.json(body)
   })
 
   // ---- photos ----
@@ -569,7 +748,7 @@ export function createApp(db: Db, config: Config) {
       const stmt = db.prepare('UPDATE photo SET sort_order = ? WHERE id = ? AND memory_id = ?')
       input.photoIds.forEach((photoId, i) => stmt.run(i, photoId, memory.id))
     })()
-    return c.json(withPhotos(db, [memory])[0])
+    return c.json(withPhotos(db, [memory], c.get('member').id)[0])
   })
 
   app.delete('/api/photos/:id', (c) => {

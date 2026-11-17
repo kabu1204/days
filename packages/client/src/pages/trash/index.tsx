@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Image, View } from '@tarojs/components'
 import type { Memory } from '@days/shared'
-import { api, photoUrl, type TrashPhoto } from '../../api/client'
+import { api, photoUrl, type TrashComment, type TrashPhoto } from '../../api/client'
 import { useT } from '../../i18n'
-import { useMember } from '../../state/session'
+import { memberName, useMember, useStatus } from '../../state/session'
 import { Button, Frame, TopBar, formatDate } from '../../ui'
 
 export default function TrashPage() {
   const t = useT()
   const me = useMember()
-  const [data, setData] = useState<{ memories: Memory[]; photos: TrashPhoto[] } | null>(null)
+  const status = useStatus()
+  const [data, setData] = useState<{ memories: Memory[]; photos: TrashPhoto[]; comments: TrashComment[] } | null>(null)
   const load = useCallback(() => {
     api.trash().then(setData, () => undefined)
   }, [])
@@ -18,7 +19,7 @@ export default function TrashPage() {
   }, [me, load])
 
   if (!me || !data) return <View className="page muted">{t('common.loading')}</View>
-  const empty = !data.memories.length && !data.photos.length
+  const empty = !data.memories.length && !data.photos.length && !data.comments.length
 
   return (
     <View className="page">
@@ -48,6 +49,21 @@ export default function TrashPage() {
             <Image src={photoUrl(p.id, 'thumb')} mode="aspectFill" style={{ width: '48px', height: '48px', flex: 'none' }} />
             <View className="grow small muted ellipsis">{t('trash.photoOf', { title: p.memoryTitle })}</View>
             <Button small kind="calm" onClick={() => api.restorePhoto(p.id).then(load)} testId="restore-photo">{t('common.restore')}</Button>
+          </View>
+        </Frame>
+      ))}
+
+      {data.comments.length ? <View className="section-title">{t('trash.comments')}</View> : null}
+      {data.comments.map((c) => (
+        <Frame key={c.id}>
+          <View className="row">
+            <View className="grow">
+              <View className="ellipsis" data-testid="trash-comment">{c.text}</View>
+              <View className="small muted ellipsis">{memberName(status, c.authorId)} · {t('trash.commentOf', { title: c.memoryTitle })}</View>
+            </View>
+            {c.authorId === me.id ? (
+              <Button small kind="calm" onClick={() => api.restoreComment(c.id).then(load)} testId="restore-comment">{t('common.restore')}</Button>
+            ) : null}
           </View>
         </Frame>
       ))}

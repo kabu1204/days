@@ -13,6 +13,7 @@ export const PALETTE: Record<string, string> = {
   n: '#8a5a3c',
   p: '#f2c6a0',
   s: '#9a8fa3',
+  m: '#e58a9a',
 }
 
 /** Converts rows of palette characters ('.' is transparent) into an SVG data URI. */

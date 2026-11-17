@@ -2,12 +2,13 @@ import path from 'node:path'
 import archiver from 'archiver'
 import type { Db } from './db/index'
 import type { MemberRow } from './auth'
-import { photosByMemory, type MemoryRow, type PlaceRow } from './store'
+import { photosByMemory, type CommentRow, type KeyDateRow, type MemoryRow, type PlaceRow, type StickerRow } from './store'
 
 export interface ExportData {
   exportedAt: string
   members: { id: number; displayName: string }[]
   places: { id: number; name: string; city: string; icon: string; latitude: number; longitude: number }[]
+  keyDates: { label: string; date: string }[]
   memories: {
     id: number
     title: string
@@ -20,6 +21,8 @@ export interface ExportData {
     placeName: string | null
     createdBy: number
     createdAt: string
+    comments: { authorId: number; text: string; createdAt: string }[]
+    stickers: { key: string; placedBy: number; x: number | null; y: number | null }[]
     photos: {
       file: string
       thumb: string
@@ -41,6 +44,14 @@ export function buildExportData(db: Db): { data: ExportData; files: { source: st
   const photos = photosByMemory(db, rows.map((r) => r.id))
   const places = db.prepare('SELECT * FROM place ORDER BY name, id').all() as PlaceRow[]
   const placeName = new Map(places.map((p) => [p.id, p.name]))
+  const comments = db
+    .prepare(
+      `SELECT c.* FROM comment c JOIN memory m ON m.id = c.memory_id
+       WHERE c.deleted_at IS NULL AND m.deleted_at IS NULL ORDER BY c.created_at, c.id`,
+    )
+    .all() as CommentRow[]
+  const stickers = db.prepare('SELECT * FROM sticker ORDER BY id').all() as StickerRow[]
+  const keyDates = db.prepare('SELECT * FROM key_date ORDER BY date, id').all() as KeyDateRow[]
   const files: { source: string; name: string }[] = []
 
   const memories = rows.map((m) => {
@@ -57,6 +68,8 @@ export function buildExportData(db: Db): { data: ExportData; files: { source: st
       placeName: m.place_id === null ? null : placeName.get(m.place_id) ?? null,
       createdBy: m.created_by,
       createdAt: m.created_at,
+      comments: comments.filter((k) => k.memory_id === m.id).map((k) => ({ authorId: k.author_id, text: k.text, createdAt: k.created_at })),
+      stickers: stickers.filter((k) => k.memory_id === m.id).map((k) => ({ key: k.sticker_key, placedBy: k.placed_by, x: k.x, y: k.y })),
       photos: (photos.get(m.id) ?? []).map((p, i) => {
         const ext = path.extname(p.original_path)
         const file = `${folder}/${m.start_date}_m${m.id}_${String(i + 1).padStart(3, '0')}${ext}`
@@ -80,6 +93,7 @@ export function buildExportData(db: Db): { data: ExportData; files: { source: st
       exportedAt: new Date().toISOString(),
       members: members.map((m) => ({ id: m.id, displayName: m.display_name })),
       places: places.map((p) => ({ id: p.id, name: p.name, city: p.city, icon: p.icon, latitude: p.latitude, longitude: p.longitude })),
+      keyDates: keyDates.map((k) => ({ label: k.label, date: k.date })),
       memories,
     },
     files,
@@ -124,6 +138,8 @@ export function offlinePage(data: ExportData): string {
   .note { white-space: pre-wrap; margin: 8px 0; }
   .photos { display: flex; flex-wrap: wrap; gap: 6px; }
   .photos img { width: 120px; height: 120px; object-fit: cover; border: 2px solid #2b2233; background: #ddd; }
+  .comment { margin: 8px 0 0; padding: 6px 10px; background: #2b2233; color: #fffaf0; white-space: pre-wrap; }
+  .comment b { color: #e0a43a; font-weight: normal; }
 </style>
 </head>
 <body>
@@ -171,6 +187,12 @@ export function offlinePage(data: ExportData): string {
       box.appendChild(link);
     });
     a.appendChild(box);
+    m.comments.forEach(function (k) {
+      var line = el('div', 'comment');
+      line.appendChild(el('b', '', (names[k.authorId] || '') + ': '));
+      line.appendChild(document.createTextNode(k.text));
+      a.appendChild(line);
+    });
     main.appendChild(a);
   });
 })();

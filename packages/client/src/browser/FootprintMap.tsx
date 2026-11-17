@@ -1,5 +1,5 @@
 // Browser-only: the map component. Everything that depends on MapLibre GL is
-// confined to this file. Inputs: places, focus target, selected place, sprite
+// confined to this file. Inputs: places, focus target, selected place, party
 // position. Outputs: place selected, view changed.
 import { useEffect, useRef, useState } from 'react'
 import { View } from '@tarojs/components'
@@ -7,6 +7,8 @@ import maplibregl, { type StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Protocol } from 'pmtiles'
 import { clusterPoints } from '@days/shared'
+import type { CharacterSheet } from '../assets/manifest'
+import { Party, facingFor, tween, walkMs } from './sprites'
 
 export interface MapPlace {
   id: number
@@ -34,8 +36,8 @@ export interface FootprintMapProps {
   controls?: boolean
   /** Shows a crosshair at the centre; the centre is the chosen point (see `onViewChanged`). */
   crosshair?: boolean
-  /** Position of the avatar sprite (used from Phase 3). */
-  sprite?: { latitude: number; longitude: number; icon: string } | null
+  /** The partners and the pet stand here, and walk when the position changes. */
+  party?: { latitude: number; longitude: number; sheets: CharacterSheet[] } | null
   /** Address of a PMTiles file in the Protomaps basemap layout; without it only the background is drawn. */
   tilesUrl?: string | null
   /** Renders at reduced resolution and enlarges without smoothing. */
@@ -110,6 +112,7 @@ export function FootprintMap(props: FootprintMapProps) {
   const map = useRef<maplibregl.Map | null>(null)
   const markers = useRef<maplibregl.Marker[]>([])
   const fitted = useRef(false)
+  const party = useRef<{ map: maplibregl.Map; party: Party; marker: maplibregl.Marker; at: [number, number]; stop: () => void } | null>(null)
   const [zoomLevel, setZoomLevel] = useState(Math.floor(props.focus?.zoom ?? DEFAULT_VIEW.zoom))
   const callbacks = useRef(props)
   callbacks.current = props
@@ -196,13 +199,59 @@ export function FootprintMap(props: FootprintMapProps) {
       })
       return new maplibregl.Marker({ element: el }).setLngLat([group.longitude, group.latitude]).addTo(instance)
     })
-    if (props.sprite) {
-      const el = document.createElement('div')
-      el.className = 'pixel-marker'
-      el.style.backgroundImage = `url("${props.sprite.icon}")`
-      markers.current.push(new maplibregl.Marker({ element: el }).setLngLat([props.sprite.longitude, props.sprite.latitude]).addTo(instance))
+  }, [props.places, props.selectedId, props.cluster, zoomLevel, props.tilesUrl, props.lowRes])
+
+  // The party stands just above the marker of its position and walks to a new one.
+  useEffect(() => {
+    const instance = map.current
+    const target = props.party
+    let s = party.current
+    if (s && (s.map !== instance || !target)) {
+      s.stop()
+      s.party.destroy()
+      s.marker.remove()
+      party.current = s = null
     }
-  }, [props.places, props.sprite, props.selectedId, props.cluster, zoomLevel, props.tilesUrl, props.lowRes])
+    if (!instance || !target) return
+    const to: [number, number] = [target.longitude, target.latitude]
+    if (!s) {
+      const p = new Party(target.sheets)
+      p.el.classList.add('on-map')
+      p.el.setAttribute('data-testid', 'map-party')
+      const marker = new maplibregl.Marker({ element: p.el, anchor: 'bottom', offset: [0, -24] }).setLngLat(to).addTo(instance)
+      party.current = { map: instance, party: p, marker, at: to, stop: () => undefined }
+      return
+    }
+    const state = s
+    state.stop()
+    const from = state.at
+    const a = instance.project(from)
+    const b = instance.project(to)
+    const distance = Math.hypot(b.x - a.x, b.y - a.y)
+    if (distance < 1) {
+      state.at = to
+      state.marker.setLngLat(to)
+      return
+    }
+    state.party.set('walk', facingFor(b.x - a.x, b.y - a.y))
+    state.stop = tween(
+      walkMs(distance),
+      (t) => {
+        state.at = [from[0] + (to[0] - from[0]) * t, from[1] + (to[1] - from[1]) * t]
+        state.marker.setLngLat(state.at)
+      },
+      () => state.party.set('idle', 'down'),
+    )
+  }, [props.party?.latitude, props.party?.longitude, props.tilesUrl, props.lowRes]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(
+    () => () => {
+      party.current?.stop()
+      party.current?.party.destroy()
+      party.current = null
+    },
+    [],
+  )
 
   useEffect(() => {
     if (!props.focus) return

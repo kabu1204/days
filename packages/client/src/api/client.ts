@@ -1,7 +1,13 @@
 import Taro from '@tarojs/taro'
 import type {
+  BubbleSources,
+  Comment,
+  KeyDate,
   Member,
   Memory,
+  MemoryDetail,
+  StickerKey,
+  StickerPlacement,
   MemoryInput,
   Photo,
   PhotoMetaInput,
@@ -56,6 +62,11 @@ export interface TrashPhoto extends Photo {
   deletedAt: string
 }
 
+export interface TrashComment extends Comment {
+  memoryTitle: string
+  deletedAt: string
+}
+
 export const api = {
   status: () => request<StatusResponse>('GET', '/api/status'),
   setup: (body: Credentials & { setupToken?: string }) => request<{ ok: true }>('POST', '/api/setup', body),
@@ -70,14 +81,27 @@ export const api = {
 
   summary: () => request<TimelineSummary>('GET', '/api/timeline/summary'),
   month: (month: string) => request<{ memories: Memory[] }>('GET', `/api/memories?month=${month}`),
-  memory: (id: number) => request<Memory>('GET', `/api/memories/${id}`),
+  memory: (id: number) => request<MemoryDetail>('GET', `/api/memories/${id}`),
+  seen: (id: number) => request<{ ok: true }>('POST', `/api/memories/${id}/seen`),
   createMemory: (body: MemoryInput) => request<Memory>('POST', '/api/memories', body),
   updateMemory: (id: number, body: Partial<MemoryInput>) => request<Memory>('PATCH', `/api/memories/${id}`, body),
   deleteMemory: (id: number) => request<{ ok: true }>('DELETE', `/api/memories/${id}`),
   restoreMemory: (id: number) => request<Memory>('POST', `/api/memories/${id}/restore`),
   deletePhoto: (id: number) => request<{ ok: true }>('DELETE', `/api/photos/${id}`),
   restorePhoto: (id: number) => request<{ ok: true }>('POST', `/api/photos/${id}/restore`),
-  trash: () => request<{ memories: Memory[]; photos: TrashPhoto[] }>('GET', '/api/trash'),
+  trash: () => request<{ memories: Memory[]; photos: TrashPhoto[]; comments: TrashComment[] }>('GET', '/api/trash'),
+
+  addComment: (memoryId: number, text: string) => request<Comment>('POST', `/api/memories/${memoryId}/comments`, { text }),
+  deleteComment: (id: number) => request<{ ok: true }>('DELETE', `/api/comments/${id}`),
+  restoreComment: (id: number) => request<Comment>('POST', `/api/comments/${id}/restore`),
+  addSticker: (memoryId: number, body: { key: StickerKey; x?: number; y?: number }) =>
+    request<StickerPlacement>('POST', `/api/memories/${memoryId}/stickers`, body),
+  deleteSticker: (id: number) => request<{ ok: true }>('DELETE', `/api/stickers/${id}`),
+
+  keyDates: () => request<{ keyDates: KeyDate[] }>('GET', '/api/key-dates'),
+  createKeyDate: (body: { label: string; date: string }) => request<KeyDate>('POST', '/api/key-dates', body),
+  deleteKeyDate: (id: number) => request<{ ok: true }>('DELETE', `/api/key-dates/${id}`),
+  bubbles: (date: string) => request<BubbleSources>('GET', `/api/bubbles?date=${date}`),
 
   places: () => request<{ places: Place[] }>('GET', '/api/places'),
   place: (id: number) => request<Place>('GET', `/api/places/${id}`),

@@ -1,6 +1,6 @@
 # Days
 
-A pixel-RPG styled memory book for exactly two people. This repository contains the first web build (Taro H5): Phase 0 (validation pages), Phase 1 (core record), and Phase 2 (map) of the [implementation plan](docs/implementation-plan.md).
+A pixel-RPG styled memory book for exactly two people. This repository contains the first web build (Taro H5): Phase 0 (validation pages), Phase 1 (core record), Phase 2 (map), and Phase 3 (co-creation and characters) of the [implementation plan](docs/implementation-plan.md).
 
 ## Contents
 
@@ -10,7 +10,7 @@ A pixel-RPG styled memory book for exactly two people. This repository contains 
 | `packages/server` | Hono server: accounts, memories, photo storage, export, SQLite |
 | `packages/client` | Taro 4 application (React, TypeScript), built for H5 |
 | `e2e` | End-to-end check that drives a browser through the full flow |
-| `docs` | The implementation plan |
+| `docs` | The implementation plan and the [art asset specification](docs/asset-spec.md) |
 
 ## Requirements
 
@@ -125,13 +125,21 @@ In this repository the map has been checked only with a small generated tile fil
 - The map is drawn at reduced resolution (pixel style) by default; this can be switched per device in the settings.
 - The export archive includes all Places, and each memory names its Place.
 
-Not yet implemented: comments, stickers, avatars and pet (Phase 3), playful features (Phase 4).
+- Co-creation (Phase 3): either partner can add photos to any memory; when both have contributed, each photo shows a small portrait of the member who added it.
+- Conversation: comments appear as dialogue boxes with the author's portrait. Only the author can delete a line; deleted lines can be restored from the trash for 30 days.
+- Stickers: six reactions (at most one of each kind per member, shown with the portraits of those who placed them) and twelve decorative stickers placed anywhere on the cover photo (at most 20 per cover; either member can remove them). Cards on the timeline show the decorative stickers, the reactions, and the number of conversation lines.
+- Quiet marker for new items: a memory is marked "New" when the partner created or edited it, or added photos, comments, or stickers, since the viewer last opened it. Months and years with such memories carry a small mark. Opening the memory clears the mark. Items that existed before a member joined are never marked.
+- Characters: the two partners and the pet stand above the month ruler and walk to the selected month; on the map they stand at the selected Place and walk to the next one. Walks last at most 0.6 seconds, stop at once on a new selection, and are replaced by an immediate move when the device asks for reduced motion.
+- Speech bubbles: key dates on the day and in the 30 days before, memories from the same day in earlier years, quotes from notes and comments, and everyday lines by time of day. The first line appears once per visit; tapping the characters shows the next one; a line about a memory opens it. No line refers to missing entries or to time since the last entry.
+- Key dates are managed in the settings and included in the export, together with comments and stickers.
+
+Not yet implemented: playful features (Phase 4).
 
 ## Notes for later work
 
 ### Art
 
-All icons (categories and the eight landmark icons for Places), the logo, and the test sprite are placeholders drawn in code. They are defined only in `packages/client/src/assets/manifest.ts`; replacing the entries there with image files replaces the art everywhere.
+All icons (categories and the eight landmark icons for Places), the logo, the stickers, and the sprite sheets of the partners and the pet are placeholders drawn in code. They are defined only in `packages/client/src/assets/manifest.ts`; replacing the entries there with image files replaces the art everywhere. Sizes, sheet layout, palette, and delivery are specified in [docs/asset-spec.md](docs/asset-spec.md).
 
 ### Typeface
 

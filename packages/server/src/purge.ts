@@ -4,7 +4,7 @@ import type { PhotoRow } from './store'
 
 export const RECOVERY_DAYS = 30
 
-/** Permanently removes memories and photos deleted more than 30 days ago. */
+/** Permanently removes memories, photos, and comments deleted more than 30 days ago. */
 export async function purgeDeleted(db: Db, filesDir: string, now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - RECOVERY_DAYS * 86400_000).toISOString()
   const photos = db
@@ -16,7 +16,13 @@ export async function purgeDeleted(db: Db, filesDir: string, now: Date = new Dat
   const removed = db.transaction(() => {
     const del = db.prepare('DELETE FROM photo WHERE id = ?')
     for (const p of photos) del.run(p.id)
-    return db.prepare('DELETE FROM memory WHERE deleted_at IS NOT NULL AND deleted_at < ?').run(cutoff).changes
+    const comments = db.prepare('DELETE FROM comment WHERE deleted_at IS NOT NULL AND deleted_at < ?').run(cutoff).changes
+    // Records that belong to a memory go with it.
+    const expired = 'SELECT id FROM memory WHERE deleted_at IS NOT NULL AND deleted_at < ?'
+    for (const table of ['comment', 'sticker', 'memory_seen']) {
+      db.prepare(`DELETE FROM ${table} WHERE memory_id IN (${expired})`).run(cutoff)
+    }
+    return comments + db.prepare('DELETE FROM memory WHERE deleted_at IS NOT NULL AND deleted_at < ?').run(cutoff).changes
   })()
   await removeImageFiles(filesDir, photos.flatMap((p) => [p.original_path, p.medium_path, p.thumb_path]))
   return removed + photos.length

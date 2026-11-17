@@ -5,7 +5,7 @@ import exifr from 'exifr'
 import { unzipSync, strFromU8 } from 'fflate'
 import sharp from 'sharp'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { Memory, Photo, Place, StatusResponse, TimelineSummary } from '@days/shared'
+import type { BubbleSources, Comment, KeyDate, Memory, MemoryDetail, Photo, Place, StatusResponse, StickerPlacement, TimelineSummary } from '@days/shared'
 import { createApp } from '../src/app'
 import type { Config } from '../src/config'
 import { openDb, type Db } from '../src/db/index'
@@ -463,5 +463,121 @@ describe('places', () => {
     const data = JSON.parse(strFromU8(zip['data.json']))
     expect(data.places).toEqual([{ id: place.id, name: 'Harbour', city: 'Shanghai', icon: 'pin', latitude: harbour.latitude, longitude: harbour.longitude }])
     expect(data.memories[0]).toMatchObject({ placeId: place.id, placeName: 'Harbour' })
+  })
+})
+
+/** Timestamps have millisecond resolution; this keeps successive actions in order. */
+const tick = () => new Promise((r) => setTimeout(r, 5))
+
+describe('co-creation', () => {
+  it('marks memories with new items from the partner until opened', async () => {
+    const { a, b } = await pair()
+    const m = (await (await a.post('/api/memories', { title: 'Harbour', startDate: '2021-07-15' })).json()) as Memory
+    expect(m.unseen).toBe(false) // one's own memory is never new
+    const monthOf = async (c: ReturnType<typeof client>) =>
+      ((await (await c.get('/api/memories?month=2021-07')).json()) as { memories: Memory[] }).memories[0]
+    expect((await monthOf(b)).unseen).toBe(true)
+    expect(((await (await b.get('/api/timeline/summary')).json()) as TimelineSummary).unseenMonths).toEqual(['2021-07'])
+    expect(((await (await a.get('/api/timeline/summary')).json()) as TimelineSummary).unseenMonths).toEqual([])
+
+    // Reading the memory does not clear the marker; opening it does.
+    const detail = (await (await b.get(`/api/memories/${m.id}`)).json()) as MemoryDetail
+    expect(detail.comments).toEqual([])
+    expect(detail.seenAt <= m.createdAt).toBe(true)
+    expect((await monthOf(b)).unseen).toBe(true)
+    expect((await b.post(`/api/memories/${m.id}/seen`)).status).toBe(200)
+    expect((await monthOf(b)).unseen).toBe(false)
+
+    // A comment, a photo, a sticker, or an edit by the partner marks it again.
+    await tick()
+    const comment = (await (await a.post(`/api/memories/${m.id}/comments`, { text: '  Windy!  ' })).json()) as Comment
+    expect(comment.text).toBe('Windy!')
+    expect((await monthOf(b)).unseen).toBe(true)
+    expect((await monthOf(a)).unseen).toBe(false)
+    await b.post(`/api/memories/${m.id}/seen`)
+    await tick()
+    await a.patch(`/api/memories/${m.id}`, { title: 'Harbour afternoon' })
+    expect((await monthOf(b)).unseen).toBe(true)
+    await b.post(`/api/memories/${m.id}/seen`)
+    await tick()
+    await a.post(`/api/memories/${m.id}/stickers`, { key: 'heart' })
+    expect((await monthOf(b)).unseen).toBe(true)
+    expect((await monthOf(b)).commentCount).toBe(1)
+  })
+
+  it('keeps comments as their authors wrote them, with recovery', async () => {
+    const { a, b } = await pair()
+    const m = (await (await a.post('/api/memories', { title: 'Picnic', startDate: '2022-05-01' })).json()) as Memory
+    expect((await a.post(`/api/memories/${m.id}/comments`, { text: '   ' })).status).toBe(400)
+    expect((await a.post(`/api/memories/${m.id}/comments`, { text: 'x'.repeat(501) })).status).toBe(400)
+    const first = (await (await a.post(`/api/memories/${m.id}/comments`, { text: 'Sunny' })).json()) as Comment
+    await tick()
+    await b.post(`/api/memories/${m.id}/comments`, { text: 'And the cake' })
+    const detail = (await (await b.get(`/api/memories/${m.id}`)).json()) as MemoryDetail
+    expect(detail.comments.map((k) => k.text)).toEqual(['Sunny', 'And the cake'])
+
+    expect((await b.del(`/api/comments/${first.id}`)).status).toBe(403)
+    expect((await a.del(`/api/comments/${first.id}`)).status).toBe(200)
+    const trash = (await (await a.get('/api/trash')).json()) as { comments: (Comment & { memoryTitle: string })[] }
+    expect(trash.comments.map((k) => [k.text, k.memoryTitle])).toEqual([['Sunny', 'Picnic']])
+    expect((await b.post(`/api/comments/${first.id}/restore`)).status).toBe(403)
+    expect((await a.post(`/api/comments/${first.id}/restore`)).status).toBe(200)
+    expect(((await (await a.get(`/api/memories/${m.id}`)).json()) as MemoryDetail).comments).toHaveLength(2)
+
+    // Exported with the memory; removed for good 30 days after deletion.
+    const files = unzipSync(new Uint8Array(await (await a.get('/api/export')).arrayBuffer()))
+    expect(JSON.parse(strFromU8(files['data.json'])).memories[0].comments.map((k: { text: string }) => k.text)).toEqual(['Sunny', 'And the cake'])
+    await a.del(`/api/comments/${first.id}`)
+    await a.del(`/api/memories/${m.id}`)
+    expect(await purgeDeleted(db, path.join(dir, 'files'), new Date(Date.now() + 31 * 86400_000))).toBe(2)
+    expect((db.prepare('SELECT count(*) AS n FROM comment').get() as { n: number }).n).toBe(0)
+  })
+
+  it('places reactions once per member and decorative stickers at a position', async () => {
+    const { a, b } = await pair()
+    const m = (await (await a.post('/api/memories', { title: 'Film', startDate: '2022-05-01' })).json()) as Memory
+    const heart = await a.post(`/api/memories/${m.id}/stickers`, { key: 'heart' })
+    expect(heart.status).toBe(201)
+    const again = await a.post(`/api/memories/${m.id}/stickers`, { key: 'heart' })
+    expect(again.status).toBe(200)
+    expect(((await again.json()) as StickerPlacement).id).toBe(((await heart.json()) as StickerPlacement).id)
+    expect((await b.post(`/api/memories/${m.id}/stickers`, { key: 'heart' })).status).toBe(201)
+    expect((await a.post(`/api/memories/${m.id}/stickers`, { key: 'heart', x: 0.5, y: 0.5 })).status).toBe(400)
+    expect((await a.post(`/api/memories/${m.id}/stickers`, { key: 'flower' })).status).toBe(400)
+    expect((await a.post(`/api/memories/${m.id}/stickers`, { key: 'flower', x: 1.5, y: 0.5 })).status).toBe(400)
+    expect((await a.post(`/api/memories/${m.id}/stickers`, { key: 'dragon', x: 0.5, y: 0.5 })).status).toBe(400)
+    const flower = (await (await a.post(`/api/memories/${m.id}/stickers`, { key: 'flower', x: 0.25, y: 0.75 })).json()) as StickerPlacement
+    expect(flower).toMatchObject({ key: 'flower', x: 0.25, y: 0.75 })
+
+    const stickers = ((await (await b.get(`/api/memories/${m.id}`)).json()) as Memory).stickers
+    expect(stickers.map((s) => s.key)).toEqual(['heart', 'heart', 'flower'])
+    // A reaction belongs to its member; a decorative sticker belongs to the memory.
+    const aliceHeart = stickers.find((s) => s.key === 'heart' && s.placedBy === stickers[0].placedBy)!
+    expect((await b.del(`/api/stickers/${aliceHeart.id}`)).status).toBe(403)
+    expect((await b.del(`/api/stickers/${flower.id}`)).status).toBe(200)
+
+    for (let i = 0; i < 20; i++) await a.post(`/api/memories/${m.id}/stickers`, { key: 'sparkle', x: i / 20, y: 0.5 })
+    expect((await a.post(`/api/memories/${m.id}/stickers`, { key: 'sparkle', x: 0.1, y: 0.1 })).status).toBe(409)
+  })
+
+  it('collects material for speech bubbles', async () => {
+    const { a, b } = await pair()
+    expect((await a.post('/api/key-dates', { label: 'First date', date: '2019-05-20' })).status).toBe(201)
+    expect((await a.post('/api/key-dates', { label: '', date: '2019-05-20' })).status).toBe(400)
+    expect((await a.post('/api/key-dates', { label: 'Bad', date: '2019-02-30' })).status).toBe(400)
+    const keyDates = ((await (await b.get('/api/key-dates')).json()) as { keyDates: KeyDate[] }).keyDates
+    expect(keyDates.map((k) => k.label)).toEqual(['First date'])
+
+    const picnic = (await (await a.post('/api/memories', { title: 'Picnic', note: '\nSunny day.\nMore', startDate: '2021-05-20' })).json()) as Memory
+    await a.post('/api/memories', { title: 'Same day, month only', startDate: '2022-05-20', datePrecision: 'month' })
+    await a.post('/api/memories', { title: 'Today', startDate: '2026-05-20' })
+    await b.post(`/api/memories/${picnic.id}/comments`, { text: 'Best cake' })
+
+    expect((await a.get('/api/bubbles?date=2026-13-01')).status).toBe(400)
+    const sources = (await (await a.get('/api/bubbles?date=2026-05-20')).json()) as BubbleSources
+    expect(sources.keyDates).toEqual([{ id: keyDates[0].id, label: 'First date', date: '2019-05-20' }])
+    expect(sources.onThisDay.map((m) => m.title)).toEqual(['Picnic'])
+    expect(sources.quotes.map((q) => q.text).sort()).toEqual(['Best cake', 'Sunny day.'])
+    expect((await a.del(`/api/key-dates/${keyDates[0].id}`)).status).toBe(200)
   })
 })
