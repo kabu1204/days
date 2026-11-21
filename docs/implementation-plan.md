@@ -171,6 +171,8 @@ Effort is a rough estimate in focused working days for one developer and exclude
 - Badges and collection album, with rules evaluated when data is saved
 - Date decision tools (destination draw, food wheel) with a wish list; a result becomes a memory draft
 
+**Status:** delivered. The badge rules are listed in `packages/shared/src/play.ts`; the server evaluates them after each successful saving request.
+
 **Total:** about 20–28 focused days.
 
 ---

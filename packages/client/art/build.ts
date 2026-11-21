@@ -7,7 +7,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { BODY_KEYS, CATEGORY_KEYS, HEADPIECE_KEYS, PLACE_ICON_KEYS, STICKER_KEYS } from '@days/shared'
+import { BADGE_KEYS, BODY_KEYS, CATEGORY_KEYS, HEADPIECE_KEYS, PLACE_ICON_KEYS, STICKER_KEYS } from '@days/shared'
+import { BADGE, badgeArt, chestArt, pointerArt } from './badges'
 import { FRAME, mochiSheet } from './characters'
 import { type Grid, blank, sheet, stamp } from './grid'
 import { headpieceSheet } from './headpieces'
@@ -34,6 +35,10 @@ export function outputs(): { path: string; grid: Grid; w: number; h: number }[] 
     ...PLACE_ICON_KEYS.map((k) => ({ path: `places/${k}.png`, grid: placeArt[k], w: ICON, h: ICON })),
     { path: 'logo.png', grid: logoArt(), w: ICON, h: ICON },
     { path: 'speech.png', grid: speechArt(), w: ICON, h: ICON },
+    ...BADGE_KEYS.map((k) => ({ path: `badges/${k}.png`, grid: badgeArt[k], w: BADGE, h: BADGE })),
+    { path: 'chest-closed.png', grid: chestArt(false), w: BADGE, h: BADGE },
+    { path: 'chest-open.png', grid: chestArt(true), w: BADGE, h: BADGE },
+    { path: 'pointer.png', grid: pointerArt(), w: ICON, h: ICON },
   ]
 }
 
@@ -56,7 +61,7 @@ function preview(): Grid {
   const rows: Grid[][] = []
   for (let i = 0; i < all.length; i += 4) rows.push(all.slice(i, i + 4))
   const chars = sheet(rows, 4, sheetW + gap, sheetH / 2 + gap)
-  const small = [...STICKER_KEYS.map((k) => stickerArt[k]), ...CATEGORY_KEYS.map((k) => categoryArt[k]), ...PLACE_ICON_KEYS.map((k) => placeArt[k]), logoArt(), speechArt()].map((g) =>
+  const small = [...STICKER_KEYS.map((k) => stickerArt[k]), ...CATEGORY_KEYS.map((k) => categoryArt[k]), ...PLACE_ICON_KEYS.map((k) => placeArt[k]), logoArt(), speechArt(), ...BADGE_KEYS.map((k) => badgeArt[k]), chestArt(false), chestArt(true), pointerArt()].map((g) =>
     pad(g, STICKER + 4, STICKER + 4),
   )
   const per = Math.floor(chars[0].length / (STICKER + 4))

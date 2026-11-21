@@ -23,6 +23,8 @@ export interface MemberRow {
   lang: Lang
   /** Items older than this are never marked as new for this member. */
   seen_since: string | null
+  /** When the member last opened the badge album. */
+  badges_seen_at: string | null
 }
 
 export type AppEnv = { Variables: { member: MemberRow } }

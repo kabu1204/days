@@ -1,4 +1,4 @@
-import type { BodyKey, CategoryKey, HeadpieceKey, PlaceIconKey, StickerKey } from '@days/shared'
+import type { BadgeKey, BodyKey, CategoryKey, HeadpieceKey, PlaceIconKey, StickerKey } from '@days/shared'
 // Generated images: run `pnpm art` after changing a drawing in packages/client/art/.
 import bodyCream from './art/bodies/cream.png'
 import bodyPeach from './art/bodies/peach.png'
@@ -11,6 +11,21 @@ import headRosette from './art/headpieces/rosette.png'
 import headTopHat from './art/headpieces/top-hat.png'
 import headChefHat from './art/headpieces/chef-hat.png'
 import headCatEars from './art/headpieces/cat-ears.png'
+import badgeFirstMemory from './art/badges/first-memory.png'
+import badgeTenMemories from './art/badges/ten-memories.png'
+import badgeHundredMemories from './art/badges/hundred-memories.png'
+import badgeFirstTrip from './art/badges/first-trip.png'
+import badgeFoodie from './art/badges/foodie.png'
+import badgeFivePlaces from './art/badges/five-places.png'
+import badgeThreeCities from './art/badges/three-cities.png'
+import badgeBothHands from './art/badges/both-hands.png'
+import badgeAlbum from './art/badges/album.png'
+import badgeOneYear from './art/badges/one-year.png'
+import badgeKeyDate from './art/badges/key-date.png'
+import badgeWishGranted from './art/badges/wish-granted.png'
+import chestClosedPng from './art/chest-closed.png'
+import chestOpenPng from './art/chest-open.png'
+import pointerPng from './art/pointer.png'
 import stickerHeart from './art/stickers/heart.png'
 import stickerLaugh from './art/stickers/laugh.png'
 import stickerWow from './art/stickers/wow.png'
@@ -149,3 +164,23 @@ export const placeIcons: Record<PlaceIconKey, string> = {
   city: placeCity,
   station: placeStation,
 }
+
+/** Badge medals for the album (16 × 16 pixel grid). */
+export const badgeIcons: Record<BadgeKey, string> = {
+  'first-memory': badgeFirstMemory,
+  'ten-memories': badgeTenMemories,
+  'hundred-memories': badgeHundredMemories,
+  'first-trip': badgeFirstTrip,
+  'foodie': badgeFoodie,
+  'five-places': badgeFivePlaces,
+  'three-cities': badgeThreeCities,
+  'both-hands': badgeBothHands,
+  'album': badgeAlbum,
+  'one-year': badgeOneYear,
+  'key-date': badgeKeyDate,
+  'wish-granted': badgeWishGranted,
+}
+
+/** The treasure chest of the random flashback (16 × 16) and the food wheel's pointer (12 × 12). */
+export const chestIcons = { closed: chestClosedPng, open: chestOpenPng }
+export const pointerIcon: string = pointerPng

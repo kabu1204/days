@@ -12,6 +12,8 @@ export default defineAppConfig({
     'pages/map/index',
     'pages/place/index',
     'pages/places/index',
+    'pages/album/index',
+    'pages/decide/index',
     'pages/lab/exif',
     'pages/lab/map',
     'pages/lab/pixel',

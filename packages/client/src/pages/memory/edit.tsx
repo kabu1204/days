@@ -20,12 +20,24 @@ import { ROUTES, getMapLowRes, timelineView, useMember, useStatus } from '../../
 import { Button, CategoryIcon, DateDialog, Field, Frame, PlaceTag, Progress, TextArea, TextInput, TopBar, cx, formatDate } from '../../ui'
 import { PlacePicker, choiceIcon, choiceName, resolvePlace, type PlaceChoice } from '../../ui/PlacePicker'
 
+/** Reads a page parameter that may be percent-encoded, without failing on malformed input. */
+function decodeParam(v: string | undefined): string {
+  if (!v) return ''
+  try {
+    return decodeURIComponent(v)
+  } catch {
+    return v
+  }
+}
+
 export default function EditMemoryPage() {
   const t = useT()
   const me = useMember()
   const status = useStatus()
   const params = useRouter().params
   const id = params.id ? Number(params.id) : null
+  /** A wish from the decision tools that this new memory grants. */
+  const wishId = id === null && params.wishId && /^\d+$/.test(params.wishId) ? Number(params.wishId) : null
 
   const defaultDate = () => {
     const today = todayLocal()
@@ -34,9 +46,12 @@ export default function EditMemoryPage() {
   }
 
   const [ready, setReady] = useState(id === null)
-  const [title, setTitle] = useState('')
+  const [title, setTitle] = useState(() => (id === null ? decodeParam(params.title).slice(0, 80) : ''))
   const [note, setNote] = useState('')
-  const [category, setCategory] = useState<CategoryKey>('daily')
+  const [category, setCategory] = useState<CategoryKey>(() => {
+    const c = decodeParam(params.category)
+    return id === null && (CATEGORY_KEYS as readonly string[]).includes(c) ? (c as CategoryKey) : 'daily'
+  })
   const [precision, setPrecision] = useState<DatePrecision>('day')
   const [startDate, setStartDate] = useState(defaultDate)
   const [endDate, setEndDate] = useState<string | null>(null)
@@ -103,7 +118,7 @@ export default function EditMemoryPage() {
     setError('')
     try {
       const placeId = await resolvePlace(place)
-      const memory = id === null ? await api.createMemory({ ...body, placeId }) : await api.updateMemory(id, { ...body, placeId })
+      const memory = id === null ? await api.createMemory({ ...body, placeId, wishId }) : await api.updateMemory(id, { ...body, placeId })
       let failed = 0
       if (photos.length) {
         let done = 0

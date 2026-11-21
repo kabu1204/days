@@ -1,6 +1,6 @@
 # Days
 
-A pixel-RPG styled memory book for exactly two people. This repository contains the first web build (Taro H5): Phase 0 (validation pages), Phase 1 (core record), Phase 2 (map), and Phase 3 (co-creation and characters) of the [implementation plan](docs/implementation-plan.md).
+A pixel-RPG styled memory book for exactly two people. This repository contains the first web build (Taro H5): Phase 0 (validation pages), Phase 1 (core record), Phase 2 (map), Phase 3 (co-creation and characters), and Phase 4 (playful features) of the [implementation plan](docs/implementation-plan.md).
 
 ## Contents
 
@@ -133,7 +133,10 @@ In this repository the map has been checked only with a small generated tile fil
 - Speech bubbles: key dates on the day and in the 30 days before, memories from the same day in earlier years, quotes from notes and comments, and everyday lines by time of day. The first line appears once per visit; tapping the characters shows the next one; a line about a memory opens it. No line refers to missing entries or to time since the last entry.
 - Key dates are managed in the settings and included in the export, together with comments and stickers.
 
-Not yet implemented: playful features (Phase 4).
+- Treasure chest (Phase 4): a chest on the timeline opens a dialogue with one memory picked at random: its author's portrait, a line such as "On this day 2 years ago…" or "On 2021.07.15…", the cover photo, and the title. Memories from this day in an earlier year are five times as likely; the last five memories shown to the same member are skipped while others remain. "Another one" draws again; "Open memory" opens it.
+- Badges and album: twelve badges (for example the first memory, a first trip, five Places, both partners writing, a year of memories, a wish granted) are evaluated by the server after every saved change. An unlocked badge is permanent, also when the data that earned it is deleted. The album lists only unlocked badges with the unlock date; there are no empty slots and no progress. A new badge places a quiet marker on the album button until the member opens the album.
+- Decision tools: a shared wish list of destinations and of food. "Where to go" shuffles cards and draws one destination; "What to eat" spins a wheel of the food wishes. Reduced motion skips both animations. "Make it a memory" opens the editor with the wish as the title and the travel or food category; saving it marks the wish as granted and lists it under "Made into memories".
+- The export includes the badges and the wish list.
 
 ## Notes for later work
 

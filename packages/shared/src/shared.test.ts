@@ -18,6 +18,10 @@ import {
   isValidMonth,
   nextMonthStart,
   normalizeStartDate,
+  badgesEarned,
+  isOnThisDay,
+  pickFlashback,
+  type BadgeFacts,
 } from './index'
 
 describe('dates', () => {
@@ -146,5 +150,43 @@ describe('key dates and speech bubbles', () => {
     expect(bubbles[3]).toEqual({ kind: 'everyday', period: 'morning', line: 1 })
     expect(dayPeriod(23)).toBe('night')
     expect(dayPeriod(14)).toBe('day')
+  })
+})
+
+describe('playful features', () => {
+  const none: BadgeFacts = {
+    memories: 0, travelMemories: 0, foodMemories: 0, places: 0, cities: 0, creators: 0,
+    photos: 0, firstDate: null, lastDate: null, keyDates: 0, wishesGranted: 0,
+  }
+
+  it('earns badges only when their rule holds', () => {
+    expect(badgesEarned(none)).toEqual([])
+    expect(badgesEarned({ ...none, memories: 1, creators: 1, firstDate: '2021-01-01', lastDate: '2021-01-01' })).toEqual(['first-memory'])
+    const many = badgesEarned({
+      ...none, memories: 12, travelMemories: 1, foodMemories: 10, places: 5, cities: 3, creators: 2,
+      photos: 100, firstDate: '2020-02-29', lastDate: '2021-02-28', keyDates: 1, wishesGranted: 1,
+    })
+    expect(many).toEqual([
+      'first-memory', 'ten-memories', 'first-trip', 'foodie', 'five-places', 'three-cities', 'both-hands', 'album', 'one-year', 'key-date', 'wish-granted',
+    ])
+    expect(badgesEarned({ ...none, memories: 2, firstDate: '2020-03-01', lastDate: '2021-02-28' })).not.toContain('one-year')
+  })
+
+  it('picks flashbacks, avoiding recent ones and preferring this day', () => {
+    const c = [
+      { id: 1, startDate: '2021-07-15', datePrecision: 'day' as const },
+      { id: 2, startDate: '2022-10-02', datePrecision: 'day' as const },
+      { id: 3, startDate: '2020-05-01', datePrecision: 'month' as const },
+    ]
+    expect(pickFlashback([], [], '2026-07-15')).toBeNull()
+    expect(pickFlashback(c, [1, 2], '2026-07-15', () => 0.99)).toBe(3)
+    // All shown recently: anything but the last one shown.
+    expect(pickFlashback(c, [1, 2, 3], '2026-07-15', () => 0)).toBe(1)
+    expect(pickFlashback(c, [2, 3, 1], '2026-07-15', () => 0)).toBe(2)
+    // Memory 1 is on this day: weight 5 of 7.
+    expect(pickFlashback(c, [], '2026-07-15', () => 0.7)).toBe(1)
+    expect(pickFlashback(c, [], '2026-07-15', () => 0.8)).toBe(2)
+    expect(isOnThisDay('2021-07-15', 'day', '2021-07-15')).toBe(false)
+    expect(isOnThisDay('2020-07-01', 'month', '2026-07-01')).toBe(false)
   })
 })

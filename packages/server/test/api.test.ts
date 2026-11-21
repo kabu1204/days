@@ -5,7 +5,7 @@ import exifr from 'exifr'
 import { unzipSync, strFromU8 } from 'fflate'
 import sharp from 'sharp'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { BubbleSources, Comment, KeyDate, Memory, MemoryDetail, Photo, Place, StatusResponse, StickerPlacement, TimelineSummary } from '@days/shared'
+import type { Badge, BubbleSources, Comment, WishItem, KeyDate, Memory, MemoryDetail, Photo, Place, StatusResponse, StickerPlacement, TimelineSummary } from '@days/shared'
 import { createApp } from '../src/app'
 import type { Config } from '../src/config'
 import { openDb, type Db } from '../src/db/index'
@@ -597,5 +597,76 @@ describe('co-creation', () => {
     expect(sources.onThisDay.map((m) => m.title)).toEqual(['Picnic'])
     expect(sources.quotes.map((q) => q.text).sort()).toEqual(['Best cake', 'Sunny day.'])
     expect((await a.del(`/api/key-dates/${keyDates[0].id}`)).status).toBe(200)
+  })
+})
+
+describe('playful features', () => {
+  it('unlocks badges when data is saved and keeps them after deletion', async () => {
+    const { a, b } = await pair()
+    expect(((await (await a.get('/api/badges')).json()) as { badges: Badge[] }).badges).toEqual([])
+    const trip = (await (await a.post('/api/memories', { title: 'Trip', startDate: '2020-05-01', category: 'travel' })).json()) as Memory
+    let badges = ((await (await a.get('/api/badges')).json()) as { badges: Badge[] }).badges
+    expect(badges.map((x) => x.key).sort()).toEqual(['first-memory', 'first-trip'])
+    expect(badges.every((x) => !x.seen)).toBe(true)
+    expect(((await (await a.get('/api/status')).json()) as StatusResponse).unseenBadges).toBe(2)
+
+    await b.post('/api/memories', { title: 'A year later', startDate: '2021-05-01' })
+    await a.post('/api/key-dates', { label: 'First date', date: '2019-05-20' })
+    badges = ((await (await b.get('/api/badges')).json()) as { badges: Badge[] }).badges
+    expect(badges.map((x) => x.key).sort()).toEqual(['both-hands', 'first-memory', 'first-trip', 'key-date', 'one-year'])
+
+    expect((await a.post('/api/badges/seen')).status).toBe(200)
+    expect(((await (await a.get('/api/status')).json()) as StatusResponse).unseenBadges).toBe(0)
+    expect(((await (await b.get('/api/status')).json()) as StatusResponse).unseenBadges).toBe(5)
+
+    await a.del(`/api/memories/${trip.id}`)
+    badges = ((await (await a.get('/api/badges')).json()) as { badges: Badge[] }).badges
+    expect(badges.map((x) => x.key)).toContain('first-trip')
+  })
+
+  it('shows memories from the treasure chest, never deleted ones', async () => {
+    const { a } = await pair()
+    expect(((await (await a.get('/api/flashback?date=2026-07-15')).json()) as { memory: Memory | null }).memory).toBeNull()
+    const kept = (await (await a.post('/api/memories', { title: 'Kept', startDate: '2021-07-15' })).json()) as Memory
+    const gone = (await (await a.post('/api/memories', { title: 'Gone', startDate: '2021-08-01' })).json()) as Memory
+    await a.del(`/api/memories/${gone.id}`)
+    expect((await a.get('/api/flashback?date=bad')).status).toBe(400)
+    for (let i = 0; i < 4; i++) {
+      const m = ((await (await a.get('/api/flashback?date=2026-07-15')).json()) as { memory: Memory }).memory
+      expect(m.id).toBe(kept.id)
+    }
+    // With two memories, the chest never shows the same one twice in a row.
+    await a.post('/api/memories', { title: 'Other', startDate: '2022-01-01' })
+    let last = 0
+    for (let i = 0; i < 6; i++) {
+      const m = ((await (await a.get('/api/flashback?date=2026-07-15')).json()) as { memory: Memory }).memory
+      expect(m.id).not.toBe(last)
+      last = m.id
+    }
+  })
+
+  it('keeps a wish list and turns a wish into a memory', async () => {
+    const { a, b } = await pair()
+    const ramen = (await (await a.post('/api/wishes', { kind: 'food', text: 'Ramen' })).json()) as WishItem
+    expect((await a.post('/api/wishes', { kind: 'film', text: 'X' })).status).toBe(400)
+    expect((await a.post('/api/wishes', { kind: 'food', text: '  ' })).status).toBe(400)
+    const sea = (await (await b.post('/api/wishes', { kind: 'destination', text: 'Seaside' })).json()) as WishItem
+    expect((await b.patch(`/api/wishes/${sea.id}`, { text: 'Seaside town' })).status).toBe(200)
+
+    const memory = (await (await b.post('/api/memories', { title: 'Ramen night', startDate: '2026-07-01', category: 'food', wishId: ramen.id })).json()) as Memory
+    // A wish is granted only once.
+    expect((await b.post('/api/memories', { title: 'Again', startDate: '2026-07-02', wishId: ramen.id })).status).toBe(400)
+    const wishes = ((await (await a.get('/api/wishes')).json()) as { wishes: WishItem[] }).wishes
+    expect(wishes.map((w) => [w.text, w.doneMemoryId])).toEqual([['Seaside town', null], ['Ramen', memory.id]])
+    const badges = ((await (await a.get('/api/badges')).json()) as { badges: Badge[] }).badges
+    expect(badges.map((x) => x.key)).toContain('wish-granted')
+    expect((await a.del(`/api/wishes/${sea.id}`)).status).toBe(200)
+    expect((await a.del(`/api/wishes/${sea.id}`)).status).toBe(404)
+
+    const exported = await a.get('/api/export')
+    const files = unzipSync(new Uint8Array(await exported.arrayBuffer()))
+    const data = JSON.parse(strFromU8(files['data.json']))
+    expect(data.wishes).toEqual([{ kind: 'food', text: 'Ramen', createdBy: ramen.createdBy, createdAt: expect.any(String), memoryId: memory.id }])
+    expect(data.badges.map((x: { key: string }) => x.key)).toContain('wish-granted')
   })
 })

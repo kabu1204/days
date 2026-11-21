@@ -5,7 +5,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { BODY_KEYS, CATEGORY_KEYS, HEADPIECE_KEYS, PLACE_ICON_KEYS, STICKER_KEYS } from '@days/shared'
+import { BADGE_KEYS, BODY_KEYS, CATEGORY_KEYS, HEADPIECE_KEYS, PLACE_ICON_KEYS, STICKER_KEYS } from '@days/shared'
 import { decodePng } from './png'
 import { PALETTE } from './palette'
 
@@ -21,6 +21,10 @@ export function expected(): { path: string; w: number; h: number }[] {
     ...PLACE_ICON_KEYS.map((k) => ({ path: `places/${k}.png`, w: 12, h: 12 })),
     { path: 'logo.png', w: 12, h: 12 },
     { path: 'speech.png', w: 12, h: 12 },
+    ...BADGE_KEYS.map((k) => ({ path: `badges/${k}.png`, w: 16, h: 16 })),
+    { path: 'chest-closed.png', w: 16, h: 16 },
+    { path: 'chest-open.png', w: 16, h: 16 },
+    { path: 'pointer.png', w: 12, h: 12 },
   ]
 }
 

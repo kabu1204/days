@@ -3,12 +3,13 @@ import { Image, Text, View } from '@tarojs/components'
 import Taro, { useDidShow } from '@tarojs/taro'
 import { pad2, todayLocal, type Memory, type TimelineSummary } from '@days/shared'
 import { api, photoUrl } from '../../api/client'
-import { logo } from '../../assets/manifest'
+import { badgeIcons, chestIcons, logo, pointerIcon } from '../../assets/manifest'
 import { scrollToId } from '../../browser/dom'
 import { useT } from '../../i18n'
-import { ROUTES, timelineView, useMember, useStatus } from '../../state/session'
+import { ROUTES, loadStatus, timelineView, useMember, useStatus } from '../../state/session'
 import { Button, CategoryIcon, Frame, Icon, cx, formatDate } from '../../ui'
 import { PartyStage } from '../../ui/Characters'
+import { ChestDialog } from '../../ui/Chest'
 import { DecorLayer, NewMark, ReactionSummary } from '../../ui/Stickers'
 
 export default function TimelinePage() {
@@ -18,6 +19,7 @@ export default function TimelinePage() {
   const [summary, setSummary] = useState<TimelineSummary | null>(null)
   const [month, setMonth] = useState<string>(timelineView.month ?? todayLocal().slice(0, 7))
   const [memories, setMemories] = useState<Memory[] | null>(null)
+  const [chest, setChest] = useState(false)
   const latest = useRef(month)
 
   const loadMonth = useCallback((m: string) => {
@@ -55,9 +57,13 @@ export default function TimelinePage() {
   useEffect(() => {
     if (me) refresh()
   }, [me, refresh])
-  // Returning from the editor or detail page shows the current data.
+  // Returning from the editor or detail page shows the current data, and
+  // the album marker reflects badges unlocked by the change.
   useDidShow(() => {
-    if (me && summary) refresh()
+    if (me && summary) {
+      refresh()
+      loadStatus(true).catch(() => undefined)
+    }
   })
 
   if (!me || !summary) return <View className="page muted">{t('common.loading')}</View>
@@ -96,6 +102,34 @@ export default function TimelinePage() {
           {t('settings.title')}
         </Button>
       </View>
+
+      <View className="play-row">
+        <Button small onClick={() => setChest(true)} testId="open-chest">
+          <Icon src={chestIcons.closed} size={24} />
+          <Text>{t('play.chest')}</Text>
+        </Button>
+        <Button small onClick={() => Taro.navigateTo({ url: ROUTES.album })} testId="open-album" className="has-mark">
+          <Icon src={badgeIcons['first-memory']} size={24} />
+          <Text>{t('play.album')}</Text>
+          {status && status.unseenBadges > 0 ? <View className="new-dot" data-testid="album-new" /> : null}
+        </Button>
+        <Button small onClick={() => Taro.navigateTo({ url: ROUTES.decide })} testId="open-decide">
+          <Icon src={pointerIcon} size={24} />
+          <Text>{t('play.decide')}</Text>
+        </Button>
+      </View>
+
+      {chest ? (
+        <ChestDialog
+          status={status}
+          t={t}
+          onClose={() => setChest(false)}
+          onOpenMemory={(id) => {
+            setChest(false)
+            openMemory(id)
+          }}
+        />
+      ) : null}
 
       {empty ? (
         <Frame tone="paper">

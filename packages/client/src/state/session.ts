@@ -17,6 +17,8 @@ export const ROUTES = {
   map: '/pages/map/index',
   places: '/pages/places/index',
   place: '/pages/place/index',
+  album: '/pages/album/index',
+  decide: '/pages/decide/index',
   labExif: '/pages/lab/exif',
   labMap: '/pages/lab/map',
   labPixel: '/pages/lab/pixel',

@@ -1,4 +1,5 @@
 import type { CategoryKey } from './categories'
+import type { BadgeKey, WishKind } from './play'
 import type { PlaceIconKey } from './places'
 import type { StickerKey } from './social'
 
@@ -106,6 +107,8 @@ export interface MemoryInput {
   datePrecision?: DatePrecision
   category?: CategoryKey
   placeId?: number | null
+  /** The wish this memory fulfils; the wish is then recorded as granted. */
+  wishId?: number | null
 }
 
 /** The fields of a Place that a memory carries with it. */
@@ -156,6 +159,32 @@ export interface StatusResponse {
   members: Member[]
   /** Address of the map tile file served by the server, or null when none is installed. */
   mapTiles: string | null
+  /** Badges unlocked since the requesting member last opened the album (the quiet marker). */
+  unseenBadges: number
+}
+
+/** An unlocked badge. */
+export interface Badge {
+  key: BadgeKey
+  unlockedAt: string
+  /** False until the requesting member has opened the album after the unlock. */
+  seen: boolean
+}
+
+/** An entry of the wish list used by the date decision tools. */
+export interface WishItem {
+  id: number
+  kind: WishKind
+  text: string
+  createdBy: number
+  createdAt: string
+  /** The memory made from this wish, or null while it is still a wish. */
+  doneMemoryId: number | null
+}
+
+/** A memory picked by the treasure chest. */
+export interface Flashback {
+  memory: Memory
 }
 
 export interface PhotoMetaInput {

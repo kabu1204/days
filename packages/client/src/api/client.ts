@@ -1,5 +1,6 @@
 import Taro from '@tarojs/taro'
 import type {
+  Badge,
   BubbleSources,
   Comment,
   KeyDate,
@@ -19,6 +20,8 @@ import type {
   StatusResponse,
   TimelineSummary,
   Lang,
+  WishItem,
+  WishKind,
 } from '@days/shared'
 
 export class ApiFailure extends Error {
@@ -113,6 +116,14 @@ export const api = {
   deletePlace: (id: number) => request<{ ok: true }>('DELETE', `/api/places/${id}`),
   mergePlace: (id: number, into: number) => request<Place>('POST', `/api/places/${id}/merge`, { into }),
   splitPlace: (id: number, body: { memoryIds: number[]; name: string }) => request<Place>('POST', `/api/places/${id}/split`, body),
+
+  badges: () => request<{ badges: Badge[] }>('GET', '/api/badges'),
+  badgesSeen: () => request<{ ok: true }>('POST', '/api/badges/seen'),
+  flashback: (date: string) => request<{ memory: Memory | null }>('GET', `/api/flashback?date=${date}`),
+  wishes: () => request<{ wishes: WishItem[] }>('GET', '/api/wishes'),
+  createWish: (body: { kind: WishKind; text: string }) => request<WishItem>('POST', '/api/wishes', body),
+  updateWish: (id: number, text: string) => request<WishItem>('PATCH', `/api/wishes/${id}`, { text }),
+  deleteWish: (id: number) => request<{ ok: true }>('DELETE', `/api/wishes/${id}`),
 }
 
 export function photoUrl(photoId: number, variant: PhotoVariant): string {

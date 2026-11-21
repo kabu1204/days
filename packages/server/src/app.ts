@@ -29,6 +29,8 @@ import {
   HEADPIECE_KEYS,
   defaultBody,
   defaultHeadpiece,
+  WISH_KINDS,
+  WISH_TEXT_MAX_LENGTH,
 } from '@days/shared'
 import {
   AttemptLimiter,
@@ -69,6 +71,7 @@ import {
   type StickerRow,
 } from './store'
 import { serveClient } from './static'
+import { evaluateBadges, listBadges, nextFlashback, toWish, unseenBadgeCount, type WishRow } from './play'
 
 
 const credentials = z.object({
@@ -95,6 +98,7 @@ const memoryCreate = z.object({
   datePrecision: memoryFields.datePrecision.default('day'),
   category: memoryFields.category.default('daily'),
   placeId: memoryFields.placeId.default(null),
+  wishId: z.number().int().positive().nullable().default(null),
 })
 const memoryPatch = z.object(memoryFields).partial()
 
@@ -167,6 +171,7 @@ export function createApp(db: Db, config: Config) {
       // Names are shown only to a signed-in member.
       members: me ? allMembers() : [],
       mapTiles: mapTilesUrl(),
+      unseenBadges: me ? unseenBadgeCount(db, me.badges_seen_at) : 0,
     }
     return c.json(body)
   })
@@ -276,6 +281,13 @@ export function createApp(db: Db, config: Config) {
   app.use('/api/*', auth)
   app.use('/files/*', auth)
 
+  // Badge rules are evaluated whenever data is saved, and once for data that existed before.
+  evaluateBadges(db)
+  app.use('/api/*', async (c, next) => {
+    await next()
+    if (c.req.method !== 'GET' && c.res.status < 300) evaluateBadges(db)
+  })
+
   app.patch('/api/me', async (c) => {
     const input = await readJson(
       c,
@@ -334,6 +346,9 @@ export function createApp(db: Db, config: Config) {
     const start = normalizeStartDate(input.startDate, input.datePrecision)
     if (input.endDate && input.endDate < start) return c.json({ error: 'invalid_input' }, 400)
     if (!placeExists(input.placeId)) return c.json({ error: 'invalid_place' }, 400)
+    if (input.wishId !== null && !db.prepare('SELECT 1 FROM wish_item WHERE id = ? AND done_memory_id IS NULL').get(input.wishId)) {
+      return c.json({ error: 'invalid_wish' }, 400)
+    }
     const me = c.get('member')
     const now = nowIso()
     const id = db
@@ -343,6 +358,7 @@ export function createApp(db: Db, config: Config) {
       )
       .run(me.space_id, input.title, input.note, start, input.endDate, input.datePrecision, input.category, input.placeId, me.id, now, now)
       .lastInsertRowid as number
+    if (input.wishId !== null) db.prepare('UPDATE wish_item SET done_memory_id = ?, done_at = ? WHERE id = ?').run(id, now, input.wishId)
     return c.json(withPhotos(db, [getMemoryRow(db, id)!], c.get('member').id)[0], 201)
   })
 
@@ -690,6 +706,58 @@ export function createApp(db: Db, config: Config) {
       .map(({ order: _order, ...q }) => q)
     const body: BubbleSources = { keyDates, onThisDay, quotes }
     return c.json(body)
+  })
+
+  // ---- badges, treasure chest, wish list ----
+
+  app.get('/api/badges', (c) => c.json({ badges: listBadges(db, c.get('member').badges_seen_at) }))
+
+  app.post('/api/badges/seen', (c) => {
+    db.prepare('UPDATE member SET badges_seen_at = ? WHERE id = ?').run(nowIso(), c.get('member').id)
+    return c.json({ ok: true })
+  })
+
+  /** A random memory for the treasure chest; `date` is the client's local date. */
+  app.get('/api/flashback', (c) => {
+    const date = c.req.query('date')
+    if (!isValidDate(date)) return c.json({ error: 'invalid_input' }, 400)
+    const me = c.get('member')
+    const id = nextFlashback(db, me.id, date)
+    return c.json({ memory: id === null ? null : withPhotos(db, [getMemoryRow(db, id)!], me.id)[0] })
+  })
+
+  const wishText = z.string().trim().min(1).max(WISH_TEXT_MAX_LENGTH)
+  const wishRow = (id: number) => db.prepare('SELECT * FROM wish_item WHERE id = ?').get(id) as WishRow | undefined
+
+  app.get('/api/wishes', (c) => {
+    const rows = db.prepare('SELECT * FROM wish_item ORDER BY done_memory_id IS NOT NULL, created_at, id').all() as WishRow[]
+    return c.json({ wishes: rows.map(toWish) })
+  })
+
+  app.post('/api/wishes', async (c) => {
+    const input = await readJson(c, z.object({ kind: z.enum(WISH_KINDS), text: wishText }))
+    if (!input) return c.json({ error: 'invalid_input' }, 400)
+    const me = c.get('member')
+    const id = db
+      .prepare('INSERT INTO wish_item (space_id, kind, text, created_by, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(me.space_id, input.kind, input.text, me.id, nowIso()).lastInsertRowid as number
+    return c.json(toWish(wishRow(id)!), 201)
+  })
+
+  app.patch('/api/wishes/:id', async (c) => {
+    const id = idParam(c.req.param('id'))
+    const row = id === null ? undefined : wishRow(id)
+    if (!row) return c.json({ error: 'not_found' }, 404)
+    const input = await readJson(c, z.object({ text: wishText }))
+    if (!input) return c.json({ error: 'invalid_input' }, 400)
+    db.prepare('UPDATE wish_item SET text = ? WHERE id = ?').run(input.text, row.id)
+    return c.json(toWish(wishRow(row.id)!))
+  })
+
+  app.delete('/api/wishes/:id', (c) => {
+    const id = idParam(c.req.param('id'))
+    const changed = id === null ? 0 : db.prepare('DELETE FROM wish_item WHERE id = ?').run(id).changes
+    return changed ? c.json({ ok: true }) : c.json({ error: 'not_found' }, 404)
   })
 
   // ---- photos ----

@@ -88,7 +88,9 @@ Map colours (vector style, no images): water `#6fa3a8`, land `#e9d8a6`, vegetati
 | Decorative stickers | 16 × 16 | 3× | 48 px |
 | Characters, headpieces, and pet | 32 × 32 per frame | 2× | 64 px |
 | Portraits (optional) | same as the character frame | 1× or 2× | 32 or 64 px |
-| Badge icons (Phase 4) | 16 × 16 | 3× | 48 px |
+| Badge icons (Phase 4) | 16 × 16 | 2×, 3× | 24, 48 px |
+| Treasure chest, closed and open (Phase 4) | 16 × 16 | 2×, 3× | 24, 48 px |
+| Wheel pointer (Phase 4) | 12 × 12 | 2× | 24 px |
 
 **Character frame size.** 32 × 32 is recommended for a recognisable likeness. 16 × 16 and 24 × 24 are also accepted, provided that both partners and the pet use the same size. The application chooses the whole-number enlargement closest to 48 screen pixels: 3× for 16 × 16, 2× for 24 × 24 and 32 × 32.
 
@@ -181,6 +183,27 @@ Landmark icons are drawn on the map, so they need a clear silhouette and an outl
 
 ---
 
+### 5.4 Badges, Treasure Chest, and Wheel Pointer (Phase 4)
+
+Badge icons are 16 × 16 medals: a paper disc with a coloured rim, ribbon tails below, and an emblem in the centre. Badges are shown only once unlocked, so no locked or silhouette version exists.
+
+| Key | Emblem | Rim |
+|---|---|---|
+| `first-memory` | heart | red |
+| `ten-memories` | the number 10 | blue |
+| `hundred-memories` | trophy cup | amber |
+| `first-trip` | suitcase | blue |
+| `foodie` | bowl with chopsticks | red |
+| `five-places` | map pin | green |
+| `three-cities` | buildings | indigo |
+| `both-hands` | two hearts | green |
+| `album` | camera | indigo |
+| `one-year` | birthday cake | pink |
+| `key-date` | calendar page | red |
+| `wish-granted` | shooting star | amber |
+
+`chest-closed` and `chest-open` (16 × 16) are a wooden chest with gold bands; the open chest shows gold inside. `pointer` (12 × 12) is a red downward marker placed above the food wheel. The wheel itself is drawn with CSS segments in palette colours.
+
 ## 6. Stickers (16 × 16)
 
 ### 6.1 Reaction Stickers
@@ -236,6 +259,8 @@ packages/client/src/assets/art/
   categories/<key>.png
   places/<key>.png
   stickers/<key>.png
+  badges/<key>.png
+  chest-closed.png    chest-open.png    pointer.png
   logo.png
   speech.png
   CREDITS.md
@@ -274,6 +299,7 @@ The built-in images are not edited as PNG files. They are generated from source 
 | `headpieces.ts` | The four headpieces, placed on the head in every frame |
 | `pet.ts` | The cat |
 | `stickers.ts`, `icons.ts` | Stickers, category and landmark icons, logo, speech icon |
+| `badges.ts` | Badge medals, the treasure chest, and the wheel pointer |
 | `build.ts`, `png.ts` | Builds all files and encodes PNG |
 | `check.ts` | The acceptance check of Section 8.3, items 1–3 |
 

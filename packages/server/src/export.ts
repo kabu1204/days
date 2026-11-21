@@ -2,6 +2,7 @@ import path from 'node:path'
 import archiver from 'archiver'
 import type { Db } from './db/index'
 import type { MemberRow } from './auth'
+import type { WishRow } from './play'
 import { photosByMemory, type CommentRow, type KeyDateRow, type MemoryRow, type PlaceRow, type StickerRow } from './store'
 
 export interface ExportData {
@@ -9,6 +10,8 @@ export interface ExportData {
   members: { id: number; displayName: string }[]
   places: { id: number; name: string; city: string; icon: string; latitude: number; longitude: number }[]
   keyDates: { label: string; date: string }[]
+  badges: { key: string; unlockedAt: string }[]
+  wishes: { kind: string; text: string; createdBy: number; createdAt: string; memoryId: number | null }[]
   memories: {
     id: number
     title: string
@@ -52,6 +55,8 @@ export function buildExportData(db: Db): { data: ExportData; files: { source: st
     .all() as CommentRow[]
   const stickers = db.prepare('SELECT * FROM sticker ORDER BY id').all() as StickerRow[]
   const keyDates = db.prepare('SELECT * FROM key_date ORDER BY date, id').all() as KeyDateRow[]
+  const badges = db.prepare('SELECT badge_key, unlocked_at FROM badge_unlock ORDER BY unlocked_at, id').all() as { badge_key: string; unlocked_at: string }[]
+  const wishes = db.prepare('SELECT * FROM wish_item ORDER BY created_at, id').all() as WishRow[]
   const files: { source: string; name: string }[] = []
 
   const memories = rows.map((m) => {
@@ -94,6 +99,8 @@ export function buildExportData(db: Db): { data: ExportData; files: { source: st
       members: members.map((m) => ({ id: m.id, displayName: m.display_name })),
       places: places.map((p) => ({ id: p.id, name: p.name, city: p.city, icon: p.icon, latitude: p.latitude, longitude: p.longitude })),
       keyDates: keyDates.map((k) => ({ label: k.label, date: k.date })),
+      badges: badges.map((b) => ({ key: b.badge_key, unlockedAt: b.unlocked_at })),
+      wishes: wishes.map((w) => ({ kind: w.kind, text: w.text, createdBy: w.created_by, createdAt: w.created_at, memoryId: w.done_memory_id })),
       memories,
     },
     files,

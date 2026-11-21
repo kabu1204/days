@@ -314,6 +314,8 @@ async function main() {
     await a.locator(`.taro_page_show ${tid('place-memory-title')} >> nth=1`).waitFor()
     assert.deepEqual(await a.locator(`.taro_page_show ${tid('place-memory-title')}`).allInnerTexts(), ['港口的下午 (Harbour)', '2021.07.15'])
     assert.ok((await a.locator(`.taro_page_show ${tid('place-memory')}`).first().getAttribute('class'))!.includes('selected'))
+    // The markers are drawn once the map has loaded.
+    await a.locator('.taro_page_show .pixel-marker.selected').first().waitFor({ timeout: 20000 })
     assert.ok(await a.locator('.taro_page_show .pixel-marker.selected').count() === 1)
     await shot(a, '17-map-place')
     assert.equal(await a.evaluate(() => window.scrollX), 0, 'the page is not scrolled sideways')
@@ -502,6 +504,104 @@ async function main() {
       .evaluateAll((els) => els.map((el) => ((el as HTMLElement).style.backgroundImage.match(/url\(/g) ?? []).length))
     assert.deepEqual(layers, [2, 2, 1], 'partners wear a headpiece over the body; the pet has one layer')
     await shot(a, '28-timeline-headpieces')
+
+    step('treasure chest: a random memory, then another')
+    await a.goto(`${base}/#/pages/timeline/index`)
+    await a.reload()
+    // Badges were unlocked along the way and are not yet seen.
+    await a.locator(`.taro_page_show ${tid('album-new')}`).waitFor()
+    await a.locator(`.taro_page_show ${tid('open-chest')}`).click()
+    await a.locator(tid('chest-memory')).waitFor()
+    const firstPick = await a.locator(tid('chest-title')).innerText()
+    assert.ok((await a.locator(tid('chest-line')).innerText()).length > 0)
+    await shot(a, '29-chest')
+    await a.locator(tid('chest-another')).click()
+    await a.waitForFunction(
+      (prev) => {
+        const el = document.querySelector('[data-testid="chest-title"]')
+        return !!el && el.textContent !== prev
+      },
+      firstPick,
+    )
+    await a.locator(tid('chest-open-memory')).click()
+    await a.waitForURL(/memory\/detail/)
+
+    step('album: unlocked badges and the quiet marker')
+    await a.goto(`${base}/#/pages/timeline/index`)
+    await a.reload()
+    await a.locator(`.taro_page_show ${tid('open-album')}`).click()
+    await a.waitForURL(/album/)
+    const earned = ((await (await ctxA.request.get(`${base}/api/badges`)).json()).badges as { key: string }[]).map((x) => x.key)
+    for (const key of ['first-memory', 'both-hands', 'key-date']) assert.ok(earned.includes(key), `${key} is unlocked`)
+    for (const key of earned) await a.locator(`.taro_page_show ${tid(`badge-${key}`)}`).waitFor()
+    assert.equal(await a.locator(`.taro_page_show .badge-cell`).count(), earned.length)
+    // Badges that are not yet earned are not shown at all.
+    assert.equal(await a.locator(`.taro_page_show ${tid('badge-hundred-memories')}`).count(), 0)
+    assert.ok((await a.locator(`.taro_page_show .badge-grid ${tid('new-mark')}`).count()) > 0)
+    await shot(a, '30-album')
+    await a.goto(`${base}/#/pages/timeline/index`)
+    await a.reload()
+    await a.locator(`.taro_page_show ${tid('open-album')}`).waitFor()
+    assert.equal(await a.locator(`.taro_page_show ${tid('album-new')}`).count(), 0, 'the marker clears once the album is opened')
+    // The partner has not opened the album yet.
+    await b.goto(`${base}/#/pages/timeline/index`)
+    await b.reload()
+    await b.locator(`.taro_page_show ${tid('album-new')}`).waitFor()
+
+    step('decision tools: the wish list, the food wheel, and a memory from a wish')
+    await a.goto(`${base}/#/pages/decide/index`)
+    await a.locator(`.taro_page_show ${tid('tab-food')}`).click()
+    await a.locator(`.taro_page_show ${tid('decide-go')}.disabled`).waitFor()
+    for (const food of ['火锅', '拉面', '小笼包']) {
+      await fill(a, 'wish', food)
+      await a.locator(`.taro_page_show ${tid('wish-add')}`).click()
+      await a.locator(`.taro_page_show ${tid('wish-text')} >> text=${food}`).waitFor()
+    }
+    await a.locator(`.taro_page_show ${tid('wish-remove')} >> nth=2`).click()
+    await a.locator(`.taro_page_show ${tid('wish-text')} >> text=小笼包`).waitFor({ state: 'detached' })
+    await a.locator(`.taro_page_show ${tid('decide-go')}`).click()
+    const result = a.locator(`.taro_page_show ${tid('decide-result')}`)
+    await result.waitFor({ timeout: 10000 })
+    const resultText = await result.innerText()
+    const food = ['火锅', '拉面'].find((f) => resultText.includes(f))!
+    assert.ok(food, `the wheel lands on a wish: ${resultText}`)
+    // The labels turn with the wheel but stay upright.
+    const tilts = await a.locator(`.taro_page_show .wheel-label`).evaluateAll((els) =>
+      els.map((el) => {
+        const wheel = new DOMMatrix(getComputedStyle(el.parentElement!).transform)
+        const m = wheel.multiply(new DOMMatrix(getComputedStyle(el).transform))
+        return Math.round((Math.atan2(m.b, m.a) * 180) / Math.PI)
+      }),
+    )
+    assert.deepEqual(tilts.map((d) => Math.abs(d) % 360), [0, 0], `the wheel labels are upright: ${tilts}`)
+    await shot(a, '31-decide-wheel')
+    await a.locator(`.taro_page_show ${tid('make-memory')}`).click()
+    await a.waitForURL(/memory\/edit/)
+    assert.equal(await a.locator('.taro_page_show input[name="title"]').inputValue(), food)
+    await a.locator(`.taro_page_show ${tid('category-food')}.selected`).waitFor()
+    await a.locator(`.taro_page_show ${tid('save')}`).click()
+    await a.waitForURL(/memory\/detail/)
+    const wishes = (await (await ctxA.request.get(`${base}/api/wishes`)).json()).wishes as { text: string; doneMemoryId: number | null }[]
+    assert.ok(wishes.find((w) => w.text === food)?.doneMemoryId, 'the wish is granted')
+    const badges = (await (await ctxA.request.get(`${base}/api/badges`)).json()).badges as { key: string }[]
+    assert.ok(badges.some((x) => x.key === 'wish-granted'), 'the wish-granted badge unlocks')
+    await a.goto(`${base}/#/pages/decide/index`)
+    await a.reload()
+    await a.locator(`.taro_page_show ${tid('tab-food')}`).click()
+    await a.locator(`.taro_page_show ${tid('wish-granted')} >> text=${food}`).waitFor()
+    assert.equal(await a.locator(`.taro_page_show ${tid('wish-item')}`).count(), 1)
+
+    step('decision tools: the destination card draw')
+    await a.locator(`.taro_page_show ${tid('tab-destination')}`).click()
+    for (const place of ['海边', '山里的温泉']) {
+      await fill(a, 'wish', place)
+      await a.locator(`.taro_page_show ${tid('wish-add')}`).click()
+      await a.locator(`.taro_page_show ${tid('wish-text')} >> text=${place}`).waitFor()
+    }
+    await a.locator(`.taro_page_show ${tid('decide-go')}`).click()
+    await a.locator(`.taro_page_show ${tid('decide-result')}`).waitFor({ timeout: 10000 })
+    assert.match(await a.locator(`.taro_page_show ${tid('draw-card')}`).innerText(), /海边|山里的温泉/)
+    await shot(a, '32-decide-draw')
 
     step('validation page a: photo metadata')
     await a.goto(`${base}/#/pages/lab/exif`)
