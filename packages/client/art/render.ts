@@ -41,6 +41,19 @@ export function ellipse(cx: number, cy: number, rx: number, ry: number, top = 2,
   }
 }
 
+/** An ellipse turned by `angle` radians (clockwise on screen). */
+export function rotEllipse(cx: number, cy: number, rx: number, ry: number, angle: number, p = 2): Inside {
+  const c = Math.cos(angle)
+  const s = Math.sin(angle)
+  return (x, y) => {
+    const dx = x - cx
+    const dy = y - cy
+    const u = (dx * c + dy * s) / rx
+    const v = (-dx * s + dy * c) / ry
+    return Math.abs(u) ** p + Math.abs(v) ** p < 1
+  }
+}
+
 export function rect(x0: number, y0: number, x1: number, y1: number): Inside {
   return (x, y) => x >= x0 && x < x1 && y >= y0 && y < y1
 }

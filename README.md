@@ -139,7 +139,7 @@ Not yet implemented: playful features (Phase 4).
 
 ### Art
 
-All built-in images are original pixel art drawn for this project: the two partners are round mochi (rice-cake) creatures, cream for partner A and peach for partner B, and the pet is a cat. Each member chooses a headpiece in the settings (rosette, top hat, chef's hat, or cat ears), drawn as a layer over the body. The icons, stickers, and the logo (a paper lantern with a heart) use the same warm palette and three-tone shading.
+All built-in images are original pixel art drawn for this project: the two partners are round mochi (rice-cake) creatures and the pet is a cat. Each member chooses a body in the settings (cream, peach, sakura, matcha, kinako, or black sesame; the defaults are cream for partner A and peach for partner B) and a headpiece (rosette, top hat, chef's hat, or cat ears), drawn as a layer over the body. Four pose stickers show the mochi hugging a star, winking, sleeping, and holding a heart. The icons, stickers, and the logo (a paper lantern with a heart) use the same warm palette and three-tone shading.
 
 The images are generated from source drawings in `packages/client/art/` with `pnpm art`, which also checks them against the specification and writes a contact sheet to [docs/art/preview.png](docs/art/preview.png). They are listed in `packages/client/src/assets/manifest.ts`. Sizes, sheet layout, palette, and delivery are specified in [docs/asset-spec.md](docs/asset-spec.md).
 

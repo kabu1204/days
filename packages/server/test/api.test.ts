@@ -172,6 +172,15 @@ describe('accounts and pairing', () => {
     expect(await res.json()).toMatchObject({ spriteId: 'chef-hat', lang: expect.any(String) })
     expect((await b.patch('/api/me', { spriteId: 'crown' })).status).toBe(400)
   })
+
+  it('gives each partner a default body and lets them choose another', async () => {
+    const { a, b } = await pair()
+    const status = (await (await a.get('/api/status')).json()) as { members: { slot: number; bodyId: string }[] }
+    expect(status.members.map((m) => [m.slot, m.bodyId])).toEqual(expect.arrayContaining([[1, 'cream'], [2, 'peach']]))
+    const res = await a.patch('/api/me', { bodyId: 'sakura' })
+    expect(await res.json()).toMatchObject({ bodyId: 'sakura', spriteId: 'rosette' })
+    expect((await a.patch('/api/me', { bodyId: 'pink-puff' })).status).toBe(400)
+  })
 })
 
 describe('memories', () => {

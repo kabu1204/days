@@ -13,6 +13,9 @@ export interface Member {
   slot: 1 | 2
   username: string
   displayName: string
+  /** Chosen body (`BODY_KEYS`). */
+  bodyId: string
+  /** Chosen headpiece (`HEADPIECE_KEYS`). */
   spriteId: string
   lang: Lang
 }

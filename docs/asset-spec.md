@@ -23,7 +23,7 @@
 
 ## 2. Palette
 
-The built-in art uses the 29 colours below (at most 32 are allowed). Each colour has a one-character key used in the source drawings (`packages/client/art/palette.ts`). The style is warm and soft, in the manner of cosy night-restaurant pixel games: plum outlines, cream and paper tones, lantern red and amber accents.
+The built-in art uses the 32 colours below (at most 32 are allowed). Each colour has a one-character key used in the source drawings (`packages/client/art/palette.ts`). The style is warm and soft, in the manner of cosy night-restaurant pixel games: plum outlines, cream and paper tones, lantern red and amber accents.
 
 | Role | Colour | Key |
 |---|---|---|
@@ -56,8 +56,20 @@ The built-in art uses the 29 colours below (at most 32 are allowed). Each colour
 | Peach shade | `#de9f88` | `Q` |
 | Mochi cream | `#fbeedd` | `c` |
 | Mochi cream shade | `#e6cbb0` | `C` |
+| Sakura mochi | `#fcd5de` | `f` |
+| Matcha light | `#dcebb4` | `h` |
+| Matcha | `#b3cf83` | `j` |
 
-The partners' bodies use three tones that depend on the partner: partner A (cream) `w`, `c`, `C`; partner B (peach) `e`, `q`, `Q`.
+Each body flavour uses three tones (highlight, base, shade) and, for some flavours, a speckle colour:
+
+| Body | Highlight | Base | Shade | Speckles | Decoration |
+|---|---|---|---|---|---|
+| `cream` | `w` | `c` | `C` | — | none |
+| `peach` | `e` | `q` | `Q` | — | none |
+| `sakura` | `w` | `f` | `p` | — | a cherry leaf (`g`, `G`) tucked behind the body, wrapped over the back |
+| `matcha` | `h` | `j` | `g` | — | none |
+| `kinako` | `W` | `V` | `l` | `W` | soybean-flour dusting |
+| `sesame` | `w` | `s` | `S` | `K` | black sesame seeds |
 
 Interface colours that are not used in images: page `#f4ecd8`, panel `#e9d8a6`, muted text `#7d6f84`, quiet `#cdbfa6`.
 
@@ -88,8 +100,12 @@ Map colours (vector style, no images): water `#6fa3a8`, land `#e9d8a6`, vegetati
 
 | Key | Content |
 |---|---|
-| `characters/partner-a` | Body of the partner who created the space (member slot 1): a cream mochi (rice-cake) creature |
-| `characters/partner-b` | Body of the partner who joined by invitation (member slot 2): a peach mochi creature |
+| `bodies/cream` | A cream mochi (rice-cake) creature; the default body of the partner who created the space (member slot 1) |
+| `bodies/peach` | A peach mochi; the default body of the partner who joined by invitation (member slot 2) |
+| `bodies/sakura` | A pale pink sakura mochi with a cherry leaf |
+| `bodies/matcha` | A green matcha mochi |
+| `bodies/kinako` | A golden kinako (soybean-flour) mochi with light dusting |
+| `bodies/sesame` | A grey black-sesame mochi with dark seeds |
 | `characters/pet` | The pet: a cream cat with amber patches and a red collar with a bell |
 | `headpieces/rosette` | Red rosette with ribbon tails, worn on the side of the head |
 | `headpieces/top-hat` | Indigo top hat with a red band |
@@ -98,7 +114,7 @@ Map colours (vector style, no images): water `#6fa3a8`, land `#e9d8a6`, vegetati
 
 One sprite sheet per key. All are original designs.
 
-**Headpieces.** A partner is drawn as two layers: the body sheet of their slot, and over it the headpiece sheet they have chosen. Each member chooses one of the four headpieces in the settings (stored as the member's `spriteId`); the defaults are the rosette for partner A and the top hat for partner B. A headpiece sheet has the same layout and frame size as the body sheets and is drawn so that, frame by frame, it sits on the head of either body, following the squash, stretch, and hop of the walk. Everything outside the headpiece is transparent.
+**Bodies and headpieces.** A partner is drawn as two layers: the body sheet they have chosen, and over it the headpiece sheet they have chosen. Each member chooses one of the six bodies and one of the four headpieces in the settings (stored as the member's `bodyId` and `spriteId`); the defaults are the cream body with the rosette for partner A and the peach body with the top hat for partner B. All bodies share one shape and pose per frame and differ only in colour and decoration. A headpiece sheet has the same layout and frame size as the body sheets and is drawn so that, frame by frame, it sits on the head of every body, following the squash, stretch, and hop of the walk. Everything outside the headpiece is transparent.
 
 ### 4.2 Sheet Layout
 
@@ -179,6 +195,15 @@ Placed anywhere on a memory's cover photo, like stickers on a printed photo.
 
 `flower`, `sparkle`, `ribbon`, `sun`, `cloud`, `note`, `leaf`, `cat`, `paw`, `cake`, `balloon`, `moon`
 
+Pose stickers show the cream mochi in a pose:
+
+| Key | Pose |
+|---|---|
+| `mochi-star` | Hugging a star, eyes closed in a smile |
+| `mochi-wink` | Winking with one hand raised, with a small sparkle |
+| `mochi-sleep` | Sleeping, with two letters Z |
+| `mochi-heart` | Holding a heart |
+
 Decorative stickers are placed on photos of any colour, so each needs the outline and at least one light and one dark area.
 
 ---
@@ -204,9 +229,10 @@ The edge segments between the corners are repeated, not stretched, so they must 
 
 ```
 packages/client/src/assets/art/
-  characters/partner-a.png      partner-b.png      pet.png
+  bodies/<key>.png              (cream, peach, sakura, matcha, kinako, sesame)
+  characters/pet.png
   headpieces/rosette.png        top-hat.png        chef-hat.png      cat-ears.png
-  portraits/partner-a.png       (optional, same for the others)
+  portraits/<key>.png           (optional)
   categories/<key>.png
   places/<key>.png
   stickers/<key>.png
@@ -242,9 +268,9 @@ The built-in images are not edited as PNG files. They are generated from source 
 
 | File | Content |
 |---|---|
-| `palette.ts` | The palette of Section 2 and the body tones of the two partners |
+| `palette.ts` | The palette of Section 2 and the tones of each body flavour |
 | `render.ts` | A small rasteriser for cel-shaded figures: shapes drawn back to front, outline, inner lines, shade and highlight |
-| `characters.ts` | The mochi bodies (poses per frame, face per facing) |
+| `characters.ts` | The mochi bodies (poses per frame, face per facing, speckles and leaf per flavour) |
 | `headpieces.ts` | The four headpieces, placed on the head in every frame |
 | `pet.ts` | The cat |
 | `stickers.ts`, `icons.ts` | Stickers, category and landmark icons, logo, speech icon |

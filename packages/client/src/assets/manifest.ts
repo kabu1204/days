@@ -1,7 +1,11 @@
-import type { CategoryKey, HeadpieceKey, PlaceIconKey, StickerKey } from '@days/shared'
+import type { BodyKey, CategoryKey, HeadpieceKey, PlaceIconKey, StickerKey } from '@days/shared'
 // Generated images: run `pnpm art` after changing a drawing in packages/client/art/.
-import partnerA from './art/characters/partner-a.png'
-import partnerB from './art/characters/partner-b.png'
+import bodyCream from './art/bodies/cream.png'
+import bodyPeach from './art/bodies/peach.png'
+import bodySakura from './art/bodies/sakura.png'
+import bodyMatcha from './art/bodies/matcha.png'
+import bodyKinako from './art/bodies/kinako.png'
+import bodySesame from './art/bodies/sesame.png'
 import pet from './art/characters/pet.png'
 import headRosette from './art/headpieces/rosette.png'
 import headTopHat from './art/headpieces/top-hat.png'
@@ -25,6 +29,10 @@ import stickerPaw from './art/stickers/paw.png'
 import stickerCake from './art/stickers/cake.png'
 import stickerBalloon from './art/stickers/balloon.png'
 import stickerMoon from './art/stickers/moon.png'
+import stickerMochiStar from './art/stickers/mochi-star.png'
+import stickerMochiWink from './art/stickers/mochi-wink.png'
+import stickerMochiSleep from './art/stickers/mochi-sleep.png'
+import stickerMochiHeart from './art/stickers/mochi-heart.png'
 import categoryDaily from './art/categories/daily.png'
 import categoryFood from './art/categories/food.png'
 import categoryTravel from './art/categories/travel.png'
@@ -80,13 +88,18 @@ export type Look = CharacterSheet[]
 const FRAME = 32
 const sheetOf = (src: string): CharacterSheet => ({ src, frameWidth: FRAME, frameHeight: FRAME })
 
-export type CharacterKey = 'partner-a' | 'partner-b' | 'pet'
-/** Bodies of the partners and the pet. */
-export const characterSheets: Record<CharacterKey, CharacterSheet> = {
-  'partner-a': sheetOf(partnerA),
-  'partner-b': sheetOf(partnerB),
-  pet: sheetOf(pet),
+/** The partners' bodies, one per flavour. */
+export const bodySheets: Record<BodyKey, CharacterSheet> = {
+  cream: sheetOf(bodyCream),
+  peach: sheetOf(bodyPeach),
+  sakura: sheetOf(bodySakura),
+  matcha: sheetOf(bodyMatcha),
+  kinako: sheetOf(bodyKinako),
+  sesame: sheetOf(bodySesame),
 }
+
+/** The pet (a cat). */
+export const petSheet: CharacterSheet = sheetOf(pet)
 
 /** Headpiece overlays, aligned frame by frame with the partners' bodies. */
 export const headpieceSheets: Record<HeadpieceKey, CharacterSheet> = {
@@ -116,6 +129,10 @@ export const stickerIcons: Record<StickerKey, string> = {
   cake: stickerCake,
   balloon: stickerBalloon,
   moon: stickerMoon,
+  'mochi-star': stickerMochiStar,
+  'mochi-wink': stickerMochiWink,
+  'mochi-sleep': stickerMochiSleep,
+  'mochi-heart': stickerMochiHeart,
 }
 
 /** Speech icon shown with comment counts (12 × 12 pixel grid). */

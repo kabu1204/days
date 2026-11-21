@@ -25,7 +25,9 @@ import {
   type Member,
   type MemoryDetail,
   type StatusResponse,
+  BODY_KEYS,
   HEADPIECE_KEYS,
+  defaultBody,
   defaultHeadpiece,
 } from '@days/shared'
 import {
@@ -180,10 +182,10 @@ export function createApp(db: Db, config: Config) {
       db.prepare('INSERT INTO space (id, created_at) VALUES (1, ?)').run(now)
       return db
         .prepare(
-          `INSERT INTO member (space_id, slot, username, password_hash, display_name, sprite_id, created_at, seen_since)
-           VALUES (1, 1, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO member (space_id, slot, username, password_hash, display_name, sprite_id, body_id, created_at, seen_since)
+           VALUES (1, 1, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(input.username, passwordHash, input.displayName, defaultHeadpiece(1), now, now).lastInsertRowid as number
+        .run(input.username, passwordHash, input.displayName, defaultHeadpiece(1), defaultBody(1), now, now).lastInsertRowid as number
     })()
     if (memberId === null) return c.json({ error: 'already_initialized' }, 409)
     startSession(c, db, config, memberId)
@@ -211,10 +213,10 @@ export function createApp(db: Db, config: Config) {
       const now = nowIso()
       const memberId = db
         .prepare(
-          `INSERT INTO member (space_id, slot, username, password_hash, display_name, sprite_id, created_at, seen_since)
-           VALUES (?, 2, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO member (space_id, slot, username, password_hash, display_name, sprite_id, body_id, created_at, seen_since)
+           VALUES (?, 2, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(inv.space_id, input.username, passwordHash, input.displayName, defaultHeadpiece(2), now, now).lastInsertRowid as number
+        .run(inv.space_id, input.username, passwordHash, input.displayName, defaultHeadpiece(2), defaultBody(2), now, now).lastInsertRowid as number
       db.prepare('UPDATE invitation SET used_at = ?, used_by = ? WHERE token_hash = ?').run(now, memberId, inv.token_hash)
       return { memberId }
     })()
@@ -278,15 +280,16 @@ export function createApp(db: Db, config: Config) {
     const input = await readJson(
       c,
       z
-        .object({ displayName: z.string().trim().min(1).max(24), lang: z.enum(LANGS as [string, ...string[]]), spriteId: z.enum(HEADPIECE_KEYS) })
+        .object({ displayName: z.string().trim().min(1).max(24), lang: z.enum(LANGS as [string, ...string[]]), spriteId: z.enum(HEADPIECE_KEYS), bodyId: z.enum(BODY_KEYS) })
         .partial(),
     )
     if (!input) return c.json({ error: 'invalid_input' }, 400)
     const me = c.get('member')
-    db.prepare('UPDATE member SET display_name = ?, lang = ?, sprite_id = ? WHERE id = ?').run(
+    db.prepare('UPDATE member SET display_name = ?, lang = ?, sprite_id = ?, body_id = ? WHERE id = ?').run(
       input.displayName ?? me.display_name,
       input.lang ?? me.lang,
       input.spriteId ?? me.sprite_id,
+      input.bodyId ?? me.body_id ?? defaultBody(me.slot),
       me.id,
     )
     return c.json(toMember(db.prepare('SELECT * FROM member WHERE id = ?').get(me.id) as MemberRow))

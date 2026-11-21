@@ -1,8 +1,10 @@
+import type { BodyKey } from '@days/shared'
+
 /**
  * The shared palette of all built-in art (docs/asset-spec.md, Section 2).
  * Each colour has a one-character key used in the drawings; '.' is
  * transparent. Digits 1-3 are body tones that are replaced per character
- * (see `TINTS`).
+ * (see `BODY_TONES`).
  */
 export const PALETTE: Record<string, string> = {
   k: '#2e1f2b', // outline, ink
@@ -34,12 +36,19 @@ export const PALETTE: Record<string, string> = {
   Q: '#de9f88', // peach shade
   c: '#fbeedd', // mochi cream
   C: '#e6cbb0', // mochi cream shade
+  f: '#fcd5de', // sakura mochi
+  h: '#dcebb4', // matcha light
+  j: '#b3cf83', // matcha
 }
 
-/** Body tones per character: 1 highlight, 2 base, 3 shade. */
-export const TINTS: Record<'cream' | 'peach', Record<string, string>> = {
-  cream: { '1': 'w', '2': 'c', '3': 'C' },
-  peach: { '1': 'e', '2': 'q', '3': 'Q' },
+/** Body tones per body: 1 highlight, 2 base, 3 shade, 4 speckles (dusting or seeds). */
+export const BODY_TONES: Record<BodyKey, Record<string, string>> = {
+  cream: { '1': 'w', '2': 'c', '3': 'C', '4': 'c' },
+  peach: { '1': 'e', '2': 'q', '3': 'Q', '4': 'q' },
+  sakura: { '1': 'w', '2': 'f', '3': 'p', '4': 'f' },
+  matcha: { '1': 'h', '2': 'j', '3': 'g', '4': 'j' },
+  kinako: { '1': 'W', '2': 'V', '3': 'l', '4': 'W' },
+  sesame: { '1': 'w', '2': 's', '3': 'S', '4': 'K' },
 }
 
 export function rgba(key: string): [number, number, number, number] {

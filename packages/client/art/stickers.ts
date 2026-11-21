@@ -200,6 +200,64 @@ function moon(): Grid {
   return g
 }
 
+// Pose stickers: the cream mochi from the character sheets in a few poses.
+const MOCHI = mat('w', 'c', 'C')
+const mochi = (cy = 10, rx = 7, ry = 5.5): Shape => ({ inside: ellipse(8, cy, rx, ry, 2, 3.2), mat: MOCHI, shade: 1.5 })
+const STAR = ['....k....', '...kYk...', 'kkkkYykkk', 'kYYyyyyok', '.kyyyyok.', '..kyyyk..', '.kyk.kok.', '.kk...kk.']
+
+/** A mochi hugging a star, eyes closed in a smile. */
+function mochiStar(): Grid {
+  let g = fig([mochi()])
+  g = stamp(g, ['.k.', 'k.k'], 3, 7)
+  g = stamp(g, ['.k.', 'k.k'], 10, 7)
+  g = stamp(g, ['m'], 2, 9)
+  g = stamp(g, ['m'], 13, 9)
+  g = stamp(g, STAR, 4, 8)
+  g = stamp(g, ['kk.', 'cck', 'CCk'], 2, 11)
+  g = stamp(g, ['.kk', 'kcc', 'kCC'], 11, 11)
+  return g
+}
+
+/** A mochi winking with one hand raised, and a small sparkle. */
+function mochiWink(): Grid {
+  let g = fig([mochi()])
+  g = stamp(g, ['k', 'k'], 4, 8)
+  g = stamp(g, ['k..', '.kk', 'k..'], 9, 7)
+  g = stamp(g, ['m'], 2, 10)
+  g = stamp(g, ['m'], 12, 10)
+  g = stamp(g, ['K..K', '.KK.'], 6, 11)
+  g = stamp(g, ['.kk.', 'kwck', 'kcck', 'kcCk', '.kk.'], 12, 3)
+  g = stamp(g, ['.Y.', 'YwY', '.Y.'], 1, 1)
+  g = stamp(g, ['Y'], 5, 0)
+  return g
+}
+
+/** A sleeping mochi, a little flatter, with two z's. */
+function mochiSleep(): Grid {
+  let g = fig([mochi(11, 7.4, 4.6)])
+  g = stamp(g, ['kk'], 3, 11)
+  g = stamp(g, ['kk'], 10, 11)
+  g = stamp(g, ['m'], 2, 12)
+  g = stamp(g, ['m'], 13, 12)
+  g = stamp(g, ['K'], 7, 13)
+  g = stamp(g, ['IIIII', '...I.', '..I..', '.I...', 'IIIII'], 10, 0)
+  g = stamp(g, ['IIII', '..I.', '.I..', 'IIII'], 5, 2)
+  return g
+}
+
+/** A mochi holding a heart in front of it. */
+function mochiHeart(): Grid {
+  let g = fig([mochi()])
+  g = stamp(g, ['k', 'k'], 5, 6)
+  g = stamp(g, ['k', 'k'], 10, 6)
+  g = stamp(g, ['m'], 3, 8)
+  g = stamp(g, ['m'], 12, 8)
+  g = stamp(g, HEART, 5, 9)
+  g = stamp(g, ['kk.', 'cck', 'CCk'], 3, 10)
+  g = stamp(g, ['.kk', 'kcc', 'kCC'], 10, 10)
+  return g
+}
+
 export const stickerArt: Record<StickerKey, Grid> = {
   heart: heart(),
   laugh: laugh(),
@@ -219,4 +277,8 @@ export const stickerArt: Record<StickerKey, Grid> = {
   cake: cake(),
   balloon: balloon(),
   moon: moon(),
+  'mochi-star': mochiStar(),
+  'mochi-wink': mochiWink(),
+  'mochi-sleep': mochiSleep(),
+  'mochi-heart': mochiHeart(),
 }

@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { HEADPIECE_KEYS, KEY_DATE_LABEL_MAX_LENGTH, todayLocal, type HeadpieceKey, type KeyDate, type Lang } from '@days/shared'
+import { BODY_KEYS, HEADPIECE_KEYS, KEY_DATE_LABEL_MAX_LENGTH, todayLocal, type BodyKey, type HeadpieceKey, type KeyDate, type Lang } from '@days/shared'
 import { ApiFailure, EXPORT_URL, api } from '../../api/client'
 import { copyText, currentOrigin, downloadUrl } from '../../browser/photo'
 import { errorText, getLang, setLang, useT } from '../../i18n'
 import { ROUTES, clearStatus, getMapLowRes, loadStatus, setMapLowRes, useMember, useStatus } from '../../state/session'
 import { Button, DateDialog, Field, Frame, TextInput, TopBar, formatDate, useToast } from '../../ui'
-import { LookPortrait, forgetBubbles, headpieceOf, partnerLook } from '../../ui/Characters'
+import { LookPortrait, bodyOf, forgetBubbles, headpieceOf, partnerLook } from '../../ui/Characters'
 
 export default function SettingsPage() {
   const t = useT()
@@ -28,6 +28,12 @@ export default function SettingsPage() {
     loadStatus(true)
   }
   const wearing = headpieceOf(me)
+  const shape = bodyOf(me)
+  const chooseBody = async (next: BodyKey) => {
+    if (next === shape) return
+    await api.updateMe({ bodyId: next })
+    await loadStatus(true)
+  }
   const chooseHeadpiece = async (next: HeadpieceKey) => {
     if (next === wearing) return
     await api.updateMe({ spriteId: next })
@@ -67,7 +73,22 @@ export default function SettingsPage() {
             </Button>
           </View>
         </Field>
-        <Field label={t('settings.appearance')}>
+        <Field label={t('settings.body')}>
+          <View className="row wrap appearance">
+            {BODY_KEYS.map((k) => (
+              <View
+                key={k}
+                className={k === shape ? 'look-option selected' : 'look-option'}
+                data-testid={`body-${k}`}
+                onClick={() => chooseBody(k)}
+              >
+                <LookPortrait look={partnerLook(k, wearing)} />
+                <Text className="small">{t(`body.${k}`)}</Text>
+              </View>
+            ))}
+          </View>
+        </Field>
+        <Field label={t('settings.headpiece')}>
           <View className="row wrap appearance">
             {HEADPIECE_KEYS.map((k) => (
               <View
@@ -76,7 +97,7 @@ export default function SettingsPage() {
                 data-testid={`headpiece-${k}`}
                 onClick={() => chooseHeadpiece(k)}
               >
-                <LookPortrait look={partnerLook(me.slot, k)} />
+                <LookPortrait look={partnerLook(shape, k)} />
                 <Text className="small">{t(`headpiece.${k}`)}</Text>
               </View>
             ))}

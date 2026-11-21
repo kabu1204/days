@@ -5,7 +5,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { CATEGORY_KEYS, HEADPIECE_KEYS, PLACE_ICON_KEYS, STICKER_KEYS } from '@days/shared'
+import { BODY_KEYS, CATEGORY_KEYS, HEADPIECE_KEYS, PLACE_ICON_KEYS, STICKER_KEYS } from '@days/shared'
 import { decodePng } from './png'
 import { PALETTE } from './palette'
 
@@ -13,7 +13,8 @@ const here = join(import.meta.dirname ?? '.', '../src/assets/art')
 
 export function expected(): { path: string; w: number; h: number }[] {
   return [
-    ...['partner-a', 'partner-b', 'pet'].map((k) => ({ path: `characters/${k}.png`, w: 128, h: 256 })),
+    ...BODY_KEYS.map((k) => ({ path: `bodies/${k}.png`, w: 128, h: 256 })),
+    { path: 'characters/pet.png', w: 128, h: 256 },
     ...HEADPIECE_KEYS.map((k) => ({ path: `headpieces/${k}.png`, w: 128, h: 256 })),
     ...STICKER_KEYS.map((k) => ({ path: `stickers/${k}.png`, w: 16, h: 16 })),
     ...CATEGORY_KEYS.map((k) => ({ path: `categories/${k}.png`, w: 12, h: 12 })),

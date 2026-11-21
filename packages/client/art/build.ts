@@ -7,7 +7,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { CATEGORY_KEYS, HEADPIECE_KEYS, PLACE_ICON_KEYS, STICKER_KEYS } from '@days/shared'
+import { BODY_KEYS, CATEGORY_KEYS, HEADPIECE_KEYS, PLACE_ICON_KEYS, STICKER_KEYS } from '@days/shared'
 import { FRAME, mochiSheet } from './characters'
 import { type Grid, blank, sheet, stamp } from './grid'
 import { headpieceSheet } from './headpieces'
@@ -26,8 +26,7 @@ export function outputs(): { path: string; grid: Grid; w: number; h: number }[] 
   const sheetW = FRAME * 4
   const sheetH = FRAME * 8
   return [
-    { path: 'characters/partner-a.png', grid: mochiSheet('cream'), w: sheetW, h: sheetH },
-    { path: 'characters/partner-b.png', grid: mochiSheet('peach'), w: sheetW, h: sheetH },
+    ...BODY_KEYS.map((k) => ({ path: `bodies/${k}.png`, grid: mochiSheet(k), w: sheetW, h: sheetH })),
     { path: 'characters/pet.png', grid: catSheet(), w: sheetW, h: sheetH },
     ...HEADPIECE_KEYS.map((k) => ({ path: `headpieces/${k}.png`, grid: headpieceSheet(k), w: sheetW, h: sheetH })),
     ...STICKER_KEYS.map((k) => ({ path: `stickers/${k}.png`, grid: stickerArt[k], w: STICKER, h: STICKER })),
@@ -44,18 +43,18 @@ function preview(): Grid {
   const sheetW = FRAME * 4
   const sheetH = FRAME * 8
   const gap = 8
-  // Characters: each body with each headpiece (down-facing idle and walk rows), then the cat.
-  const bodies = [mochiSheet('cream'), mochiSheet('peach')]
-  const combos: Grid[] = []
-  for (const body of bodies)
-    for (const k of HEADPIECE_KEYS) {
-      const g = stamp(body, headpieceSheet(k), 0, 0)
-      combos.push([...g.slice(0, FRAME * 4)])
-    }
+  // Characters: the cream body with each headpiece, then every other body with one
+  // headpiece each, then the cat (idle rows, then walk rows of each sheet).
+  const half = (g: Grid) => g.slice(0, FRAME * 4)
   const cell = (g: Grid) => pad(g, sheetW + gap, sheetH / 2 + gap)
-  const rows: Grid[][] = [combos.slice(0, 4).map(cell), combos.slice(4).map(cell)]
+  const cells: Grid[] = HEADPIECE_KEYS.map((k) => stamp(mochiSheet('cream'), headpieceSheet(k), 0, 0))
+  BODY_KEYS.filter((b) => b !== 'cream').forEach((b, i) =>
+    cells.push(stamp(mochiSheet(b), headpieceSheet(HEADPIECE_KEYS[(i + 1) % HEADPIECE_KEYS.length]), 0, 0)),
+  )
   const cat = catSheet()
-  rows.push([cell(cat.slice(0, FRAME * 4)), cell(cat.slice(FRAME * 4))])
+  const all = [...cells.map((g) => cell(half(g))), cell(half(cat)), cell(cat.slice(FRAME * 4))]
+  const rows: Grid[][] = []
+  for (let i = 0; i < all.length; i += 4) rows.push(all.slice(i, i + 4))
   const chars = sheet(rows, 4, sheetW + gap, sheetH / 2 + gap)
   const small = [...STICKER_KEYS.map((k) => stickerArt[k]), ...CATEGORY_KEYS.map((k) => categoryArt[k]), ...PLACE_ICON_KEYS.map((k) => placeArt[k]), logoArt(), speechArt()].map((g) =>
     pad(g, STICKER + 4, STICKER + 4),
@@ -81,7 +80,7 @@ function main() {
       'All images in this folder are original work drawn for this project. They are generated',
       'from the drawings in `packages/client/art/` with `pnpm art`; do not edit the PNG files by hand.',
       '',
-      'The characters are original round mochi (rice-cake) creatures and a cat. The style is inspired',
+      'The characters are original round mochi (rice-cake) creatures in six flavours, and a cat. The style is inspired',
       'only in general traits (warm night palette, soft outlines, three-tone shading) by cosy',
       'restaurant-management pixel games; no character, sprite, logo or interface of any existing game is used.',
       '',

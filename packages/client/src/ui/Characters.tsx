@@ -1,16 +1,17 @@
 import { useEffect, useRef } from 'react'
 import { View } from '@tarojs/components'
-import { defaultHeadpiece, isHeadpieceKey, planBubbles, todayLocal, type Bubble, type HeadpieceKey, type Member, type StatusResponse } from '@days/shared'
+import { defaultBody, defaultHeadpiece, isBodyKey, isHeadpieceKey, planBubbles, todayLocal, type BodyKey, type Bubble, type HeadpieceKey, type Member, type StatusResponse } from '@days/shared'
 import { api } from '../api/client'
-import { characterSheets, headpieceSheets, type CharacterKey, type Look } from '../assets/manifest'
+import { bodySheets, headpieceSheets, petSheet, type Look } from '../assets/manifest'
 import { Party, facingFor, frameStyle, spriteScale, tween, walkMs } from '../browser/sprites'
 import type { Translate } from '../i18n'
 import { cx } from '.'
 
 export const PET_ID = 0
 
-export function characterKey(slot: 1 | 2): CharacterKey {
-  return slot === 1 ? 'partner-a' : 'partner-b'
+/** The body a member has; unknown values fall back to the slot's default. */
+export function bodyOf(m: Pick<Member, 'slot' | 'bodyId'>): BodyKey {
+  return isBodyKey(m.bodyId) ? m.bodyId : defaultBody(m.slot)
 }
 
 /** The headpiece a member wears; unknown values fall back to the slot's default. */
@@ -19,17 +20,17 @@ export function headpieceOf(m: Pick<Member, 'slot' | 'spriteId'>): HeadpieceKey 
 }
 
 /** A partner's body with a headpiece over it. */
-export function partnerLook(slot: 1 | 2, headpiece: HeadpieceKey): Look {
-  return [characterSheets[characterKey(slot)], headpieceSheets[headpiece]]
+export function partnerLook(body: BodyKey, headpiece: HeadpieceKey): Look {
+  return [bodySheets[body], headpieceSheets[headpiece]]
 }
 
-const lookOf = (m: Member | undefined): Look => (m ? partnerLook(m.slot, headpieceOf(m)) : [characterSheets.pet])
+const lookOf = (m: Member | undefined): Look => (m ? partnerLook(bodyOf(m), headpieceOf(m)) : [petSheet])
 
 /** The party in display order: members by slot, then the pet. `key` changes when a look changes. */
 export function partyMembers(status: StatusResponse | null): { id: number; look: Look; key: string }[] {
   const members = [...(status?.members ?? [])].sort((a, b) => a.slot - b.slot)
   return [
-    ...members.map((m: Member) => ({ id: m.id, look: lookOf(m), key: `${m.id}:${headpieceOf(m)}` })),
+    ...members.map((m: Member) => ({ id: m.id, look: lookOf(m), key: `${m.id}:${bodyOf(m)}:${headpieceOf(m)}` })),
     { id: PET_ID, look: lookOf(undefined), key: 'pet' },
   ]
 }

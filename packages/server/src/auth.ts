@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import type { Context, MiddlewareHandler } from 'hono'
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie'
-import type { Lang, Member } from '@days/shared'
+import { defaultBody, type Lang, type Member } from '@days/shared'
 import type { Config } from './config'
 import { nowIso, type Db } from './db/index'
 
@@ -18,6 +18,8 @@ export interface MemberRow {
   password_hash: string
   display_name: string
   sprite_id: string
+  /** Null for members created before bodies could be chosen without a migration value. */
+  body_id: string | null
   lang: Lang
   /** Items older than this are never marked as new for this member. */
   seen_since: string | null
@@ -31,6 +33,7 @@ export function toMember(r: MemberRow): Member {
     slot: r.slot,
     username: r.username,
     displayName: r.display_name,
+    bodyId: r.body_id ?? defaultBody(r.slot),
     spriteId: r.sprite_id,
     lang: r.lang,
   }

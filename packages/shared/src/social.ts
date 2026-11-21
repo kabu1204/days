@@ -5,6 +5,7 @@ export const REACTION_KEYS = ['heart', 'laugh', 'wow', 'tear', 'hug', 'clap'] as
 /** Stickers placed anywhere on a memory's cover. */
 export const DECOR_KEYS = [
   'flower', 'sparkle', 'ribbon', 'sun', 'cloud', 'note', 'leaf', 'cat', 'paw', 'cake', 'balloon', 'moon',
+  'mochi-star', 'mochi-wink', 'mochi-sleep', 'mochi-heart',
 ] as const
 export const STICKER_KEYS = [...REACTION_KEYS, ...DECOR_KEYS] as const
 

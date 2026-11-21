@@ -3,6 +3,7 @@ import type {
   BubbleSources,
   Comment,
   KeyDate,
+  BodyKey,
   HeadpieceKey,
   Member,
   Memory,
@@ -73,7 +74,7 @@ export const api = {
   setup: (body: Credentials & { setupToken?: string }) => request<{ ok: true }>('POST', '/api/setup', body),
   signIn: (username: string, password: string) => request<{ ok: true }>('POST', '/api/session', { username, password }),
   signOut: () => request<{ ok: true }>('DELETE', '/api/session'),
-  updateMe: (body: { displayName?: string; lang?: Lang; spriteId?: HeadpieceKey }) => request<Member>('PATCH', '/api/me', body),
+  updateMe: (body: { displayName?: string; lang?: Lang; spriteId?: HeadpieceKey; bodyId?: BodyKey }) => request<Member>('PATCH', '/api/me', body),
 
   checkInvitation: (token: string) => request<{ valid: boolean }>('GET', `/api/invitations/${encodeURIComponent(token)}`),
   acceptInvitation: (token: string, body: Credentials) =>
