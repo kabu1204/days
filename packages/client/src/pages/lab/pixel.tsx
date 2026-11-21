@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Text, View } from '@tarojs/components'
-import { CATEGORY_KEYS } from '@days/shared'
+import { CATEGORY_KEYS, HEADPIECE_KEYS } from '@days/shared'
 import { characterSheets, stickerIcons } from '../../assets/manifest'
 import { frameStyle } from '../../browser/sprites'
+import { partnerLook } from '../../ui/Characters'
 import { deviceInfo } from '../../browser/photo'
 import { useT } from '../../i18n'
 import { Button, CategoryIcon, Frame, TopBar } from '../../ui'
@@ -43,11 +44,17 @@ export default function LabPixelPage() {
       <View style={{ margin: '18px 0' }}>
         {[1, 2, 3, 4, 6].map((scale) => (
           <View key={scale} className="row" style={{ marginBottom: '6px', alignItems: 'flex-end' }}>
-            <View className="sprite" data-testid={`sprite-${scale}`} style={frameStyle(characterSheets['partner-a'], scale, 4, frame)} />
-            <View className="sprite" style={frameStyle(characterSheets['partner-b'], scale, 6, frame)} />
+            <View className="sprite" data-testid={`sprite-${scale}`} style={frameStyle(partnerLook(1, 'rosette'), scale, 4, frame)} />
+            <View className="sprite" style={frameStyle(partnerLook(2, 'top-hat'), scale, 6, frame)} />
             <View className="sprite" style={frameStyle(characterSheets.pet, scale, 5, frame)} />
           </View>
         ))}
+      </View>
+
+      <View className="row wrap" style={{ marginBottom: '18px' }} data-testid="lab-looks">
+        {([1, 2] as const).flatMap((slot) =>
+          HEADPIECE_KEYS.map((k) => <View key={`${slot}-${k}`} className="sprite" style={frameStyle(partnerLook(slot, k), 2, 0, frame % 2)} />),
+        )}
       </View>
 
       <View className="row wrap" style={{ marginBottom: '18px' }}>

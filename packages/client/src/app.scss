@@ -414,7 +414,7 @@ html, body {
 .actor, .portrait { flex: none; image-rendering: pixelated; }
 .party { display: flex; align-items: flex-end; }
 .party-slot { position: relative; }
-.stage { position: relative; height: 51px; margin: 9px 3px 0; }
+.stage { position: relative; height: 67px; margin: 9px 3px 0; }
 .stage .party { position: absolute; left: 0; bottom: 0; cursor: pointer; will-change: transform; }
 .party.on-map { pointer-events: none; }
 .bubble {
@@ -546,3 +546,12 @@ html, body {
 }
 .say { display: flex; align-items: flex-end; gap: 6px; margin-top: 12px; .px-input { flex: 1; } }
 .key-date { padding: 3px 0; }
+
+// ---- appearance choice (settings) ----
+.appearance { gap: 6px; }
+.look-option {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 3px 6px 6px; cursor: pointer; background: var(--paper);
+  box-shadow: 0 0 0 var(--px) var(--quiet);
+  &.selected { background: var(--paper-2); box-shadow: 0 0 0 var(--px) var(--ink); }
+}

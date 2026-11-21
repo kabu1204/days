@@ -163,6 +163,15 @@ describe('accounts and pairing', () => {
     expect(await res.json()).toMatchObject({ lang: 'en', displayName: 'Bobby' })
     expect((await b.patch('/api/me', { lang: 'fr' })).status).toBe(400)
   })
+
+  it('gives each partner a default headpiece and lets them choose another', async () => {
+    const { a, b } = await pair()
+    const status = (await (await a.get('/api/status')).json()) as { members: { slot: number; spriteId: string }[] }
+    expect(status.members.map((m) => [m.slot, m.spriteId])).toEqual(expect.arrayContaining([[1, 'rosette'], [2, 'top-hat']]))
+    const res = await b.patch('/api/me', { spriteId: 'chef-hat' })
+    expect(await res.json()).toMatchObject({ spriteId: 'chef-hat', lang: expect.any(String) })
+    expect((await b.patch('/api/me', { spriteId: 'crown' })).status).toBe(400)
+  })
 })
 
 describe('memories', () => {

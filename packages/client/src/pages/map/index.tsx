@@ -76,7 +76,7 @@ export default function MapPage() {
 
   const standing = (places ?? []).find((p) => p.id === selected)
   const party = useMemo(
-    () => (standing ? { latitude: standing.latitude, longitude: standing.longitude, sheets: partyMembers(status).map((m) => m.sheet) } : null),
+    () => (standing ? { latitude: standing.latitude, longitude: standing.longitude, looks: partyMembers(status).map((m) => m.look) } : null),
     [standing?.latitude, standing?.longitude, status], // eslint-disable-line react-hooks/exhaustive-deps
   )
 

@@ -7,7 +7,7 @@ import maplibregl, { type StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { Protocol } from 'pmtiles'
 import { clusterPoints } from '@days/shared'
-import type { CharacterSheet } from '../assets/manifest'
+import type { Look } from '../assets/manifest'
 import { Party, facingFor, tween, walkMs } from './sprites'
 
 export interface MapPlace {
@@ -37,7 +37,7 @@ export interface FootprintMapProps {
   /** Shows a crosshair at the centre; the centre is the chosen point (see `onViewChanged`). */
   crosshair?: boolean
   /** The partners and the pet stand here, and walk when the position changes. */
-  party?: { latitude: number; longitude: number; sheets: CharacterSheet[] } | null
+  party?: { latitude: number; longitude: number; looks: Look[] } | null
   /** Address of a PMTiles file in the Protomaps basemap layout; without it only the background is drawn. */
   tilesUrl?: string | null
   /** Renders at reduced resolution and enlarges without smoothing. */
@@ -112,7 +112,7 @@ export function FootprintMap(props: FootprintMapProps) {
   const map = useRef<maplibregl.Map | null>(null)
   const markers = useRef<maplibregl.Marker[]>([])
   const fitted = useRef(false)
-  const party = useRef<{ map: maplibregl.Map; party: Party; marker: maplibregl.Marker; at: [number, number]; stop: () => void } | null>(null)
+  const party = useRef<{ map: maplibregl.Map; party: Party; marker: maplibregl.Marker; at: [number, number]; stop: () => void; looks: string } | null>(null)
   const [zoomLevel, setZoomLevel] = useState(Math.floor(props.focus?.zoom ?? DEFAULT_VIEW.zoom))
   const callbacks = useRef(props)
   callbacks.current = props
@@ -202,11 +202,12 @@ export function FootprintMap(props: FootprintMapProps) {
   }, [props.places, props.selectedId, props.cluster, zoomLevel, props.tilesUrl, props.lowRes])
 
   // The party stands just above the marker of its position and walks to a new one.
+  const looksKey = props.party ? props.party.looks.map((l) => l.map((sheet) => sheet.src).join('+')).join(',') : ''
   useEffect(() => {
     const instance = map.current
     const target = props.party
     let s = party.current
-    if (s && (s.map !== instance || !target)) {
+    if (s && (s.map !== instance || !target || s.looks !== looksKey)) {
       s.stop()
       s.party.destroy()
       s.marker.remove()
@@ -215,11 +216,11 @@ export function FootprintMap(props: FootprintMapProps) {
     if (!instance || !target) return
     const to: [number, number] = [target.longitude, target.latitude]
     if (!s) {
-      const p = new Party(target.sheets)
+      const p = new Party(target.looks)
       p.el.classList.add('on-map')
       p.el.setAttribute('data-testid', 'map-party')
       const marker = new maplibregl.Marker({ element: p.el, anchor: 'bottom', offset: [0, -24] }).setLngLat(to).addTo(instance)
-      party.current = { map: instance, party: p, marker, at: to, stop: () => undefined }
+      party.current = { map: instance, party: p, marker, at: to, stop: () => undefined, looks: looksKey }
       return
     }
     const state = s
@@ -242,7 +243,7 @@ export function FootprintMap(props: FootprintMapProps) {
       },
       () => state.party.set('idle', 'down'),
     )
-  }, [props.party?.latitude, props.party?.longitude, props.tilesUrl, props.lowRes]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [props.party?.latitude, props.party?.longitude, looksKey, props.tilesUrl, props.lowRes]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(
     () => () => {

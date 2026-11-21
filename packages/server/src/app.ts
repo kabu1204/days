@@ -25,6 +25,8 @@ import {
   type Member,
   type MemoryDetail,
   type StatusResponse,
+  HEADPIECE_KEYS,
+  defaultHeadpiece,
 } from '@days/shared'
 import {
   AttemptLimiter,
@@ -66,7 +68,6 @@ import {
 } from './store'
 import { serveClient } from './static'
 
-const SPRITES = ['partner-a', 'partner-b']
 
 const credentials = z.object({
   username: z.string().trim().regex(/^[A-Za-z0-9_.-]{3,32}$/),
@@ -182,7 +183,7 @@ export function createApp(db: Db, config: Config) {
           `INSERT INTO member (space_id, slot, username, password_hash, display_name, sprite_id, created_at, seen_since)
            VALUES (1, 1, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(input.username, passwordHash, input.displayName, SPRITES[0], now, now).lastInsertRowid as number
+        .run(input.username, passwordHash, input.displayName, defaultHeadpiece(1), now, now).lastInsertRowid as number
     })()
     if (memberId === null) return c.json({ error: 'already_initialized' }, 409)
     startSession(c, db, config, memberId)
@@ -213,7 +214,7 @@ export function createApp(db: Db, config: Config) {
           `INSERT INTO member (space_id, slot, username, password_hash, display_name, sprite_id, created_at, seen_since)
            VALUES (?, 2, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(inv.space_id, input.username, passwordHash, input.displayName, SPRITES[1], now, now).lastInsertRowid as number
+        .run(inv.space_id, input.username, passwordHash, input.displayName, defaultHeadpiece(2), now, now).lastInsertRowid as number
       db.prepare('UPDATE invitation SET used_at = ?, used_by = ? WHERE token_hash = ?').run(now, memberId, inv.token_hash)
       return { memberId }
     })()
@@ -276,13 +277,16 @@ export function createApp(db: Db, config: Config) {
   app.patch('/api/me', async (c) => {
     const input = await readJson(
       c,
-      z.object({ displayName: z.string().trim().min(1).max(24), lang: z.enum(LANGS as [string, ...string[]]) }).partial(),
+      z
+        .object({ displayName: z.string().trim().min(1).max(24), lang: z.enum(LANGS as [string, ...string[]]), spriteId: z.enum(HEADPIECE_KEYS) })
+        .partial(),
     )
     if (!input) return c.json({ error: 'invalid_input' }, 400)
     const me = c.get('member')
-    db.prepare('UPDATE member SET display_name = ?, lang = ? WHERE id = ?').run(
+    db.prepare('UPDATE member SET display_name = ?, lang = ?, sprite_id = ? WHERE id = ?').run(
       input.displayName ?? me.display_name,
       input.lang ?? me.lang,
+      input.spriteId ?? me.sprite_id,
       me.id,
     )
     return c.json(toMember(db.prepare('SELECT * FROM member WHERE id = ?').get(me.id) as MemberRow))

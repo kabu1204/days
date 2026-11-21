@@ -1,7 +1,7 @@
 // Sprite layer for the partners and the pet. Browser-only: actors are plain
 // DOM elements animated by one shared timer, so that walking does not cause
 // React renders. Sheet layout: docs/asset-spec.md, Section 4.
-import type { CharacterSheet } from '../assets/manifest'
+import type { CharacterSheet, Look } from '../assets/manifest'
 
 export type Facing = 'down' | 'left' | 'right' | 'up'
 export type Motion = 'idle' | 'walk'
@@ -25,17 +25,30 @@ export function reducedMotion(): boolean {
   }
 }
 
-/** CSS for showing one frame of a sheet as an element background. */
-export function frameStyle(sheet: CharacterSheet, scale: number, row = 0, column = 0): Record<string, string> {
-  const w = sheet.frameWidth * scale
-  const h = sheet.frameHeight * scale
+const layersOf = (look: CharacterSheet | Look): Look => (Array.isArray(look) ? look : [look])
+
+/** Background position of one frame, repeated for every layer. */
+function position(layers: number, w: number, h: number, row: number, column: number): string {
+  return new Array(layers).fill(`-${column * w}px -${row * h}px`).join(', ')
+}
+
+/**
+ * CSS for showing one frame of a sheet, or of several sheets drawn over one
+ * another (bottom first), as element backgrounds.
+ */
+export function frameStyle(look: CharacterSheet | Look, scale: number, row = 0, column = 0): Record<string, string> {
+  const layers = layersOf(look)
+  const w = layers[0].frameWidth * scale
+  const h = layers[0].frameHeight * scale
+  const each = (v: string) => new Array(layers.length).fill(v).join(', ')
   return {
     width: `${w}px`,
     height: `${h}px`,
-    backgroundImage: `url("${sheet.src}")`,
-    backgroundSize: `${w * 4}px ${h * 8}px`,
-    backgroundPosition: `-${column * w}px -${row * h}px`,
-    backgroundRepeat: 'no-repeat',
+    // The first CSS background is drawn on top.
+    backgroundImage: [...layers].reverse().map((l) => `url("${l.src}")`).join(', '),
+    backgroundSize: each(`${w * 4}px ${h * 8}px`),
+    backgroundPosition: position(layers.length, w, h, row, column),
+    backgroundRepeat: each('no-repeat'),
   }
 }
 
@@ -71,12 +84,12 @@ export class Actor {
   private shown = ''
 
   constructor(
-    private sheet: CharacterSheet,
+    private look: Look,
     private scale: number,
   ) {
     this.el = document.createElement('div')
     this.el.className = 'actor'
-    Object.assign(this.el.style, frameStyle(sheet, scale))
+    Object.assign(this.el.style, frameStyle(look, scale))
     this.draw(this.since)
     track(this)
   }
@@ -97,9 +110,9 @@ export class Actor {
     const key = `${row}:${column}`
     if (key === this.shown) return
     this.shown = key
-    const w = this.sheet.frameWidth * this.scale
-    const h = this.sheet.frameHeight * this.scale
-    this.el.style.backgroundPosition = `-${column * w}px -${row * h}px`
+    const w = this.look[0].frameWidth * this.scale
+    const h = this.look[0].frameHeight * this.scale
+    this.el.style.backgroundPosition = position(this.look.length, w, h, row, column)
   }
 
   destroy(): void {
@@ -118,12 +131,13 @@ export class Party {
   private slots: HTMLDivElement[]
   private bubble: HTMLDivElement | null = null
 
-  constructor(sheets: CharacterSheet[]) {
+  /** One look per character: its body sheet, then any overlays. */
+  constructor(looks: Look[]) {
     this.el = document.createElement('div')
     this.el.className = 'party'
     this.el.setAttribute('data-testid', 'party')
-    const scale = Math.min(...sheets.map((s) => spriteScale(s)))
-    this.actors = sheets.map((s) => new Actor(s, scale))
+    const scale = Math.min(...looks.map((l) => spriteScale(l[0])))
+    this.actors = looks.map((l) => new Actor(l, scale))
     this.slots = this.actors.map((a) => {
       const slot = document.createElement('div')
       slot.className = 'party-slot'

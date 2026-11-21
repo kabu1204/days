@@ -1,8 +1,8 @@
 # Art Asset Specification
 
-- **Date:** 2026-11-17
+- **Date:** 2026-11-17 (revised 2026-11-21: final built-in art, headpieces)
 - **Applies to:** all images used by the interface, whatever their source (self-drawn, commissioned, or licensed packs).
-- **Integration point:** `packages/client/src/assets/manifest.ts`. Every image the interface shows is listed there. Until final art exists, each entry is a generated placeholder. Replacing an entry with a file that follows this specification requires no other code change.
+- **Integration point:** `packages/client/src/assets/manifest.ts`. Every image the interface shows is listed there and imported from `packages/client/src/assets/art/`. The built-in images are original art drawn for this project and generated from source drawings (Section 8.4). Replacing a file with one that follows this specification requires no other code change.
 
 ---
 
@@ -14,7 +14,8 @@
 | Export size | 1× only: one image pixel per art pixel. The application enlarges by whole-number factors without smoothing. |
 | Edges | No anti-aliasing, no blur, no soft shadows. Every pixel is either fully transparent or fully opaque. |
 | Palette | One shared palette of at most 32 colours for all assets (Section 2). Colours outside the palette are not used. |
-| Outline | A 1-pixel outline in the outline colour (`#2b2233`) on characters, icons, and stickers, so that they read on both light and dark backgrounds. |
+| Outline | A 1-pixel outline in the outline colour (`#2e1f2b`, dark plum rather than black) on characters, icons, and stickers, so that they read on both light and dark backgrounds. The upper-left part of a figure's outline may use the soft outline colour (`#5a3a4a`), as the side facing the light. |
+| Shading | Three tones per material (highlight, base, shade) with light from the upper left: shade on the lower right, highlight on the upper left. No dithering. |
 | Text | No text inside images. All text is set in the interface in both languages. |
 | Licence | Every file is recorded in `CREDITS.md` with its source, author, and licence (Section 8). |
 
@@ -22,20 +23,41 @@
 
 ## 2. Palette
 
-The placeholders use the ten colours below. The final palette may add colours up to a total of 32, and may adjust these values; the interface colours in `app.scss` and the map style are then updated to match.
+The built-in art uses the 29 colours below (at most 32 are allowed). Each colour has a one-character key used in the source drawings (`packages/client/art/palette.ts`). The style is warm and soft, in the manner of cosy night-restaurant pixel games: plum outlines, cream and paper tones, lantern red and amber accents.
 
-| Role | Colour | Placeholder letter |
+| Role | Colour | Key |
 |---|---|---|
-| Outline, ink | `#2b2233` | `k` |
-| Highlight, paper white | `#fffaf0` | `w` |
-| Accent red | `#c8553d` | `r` |
-| Gold | `#e0a43a` | `y` |
-| Green | `#3d7a6a` | `g` |
-| Blue | `#4a7fb5` | `b` |
-| Brown | `#8a5a3c` | `n` |
-| Skin | `#f2c6a0` | `p` |
-| Grey | `#9a8fa3` | `s` |
-| Pink (cheeks, hearts) | `#e58a9a` | `m` |
+| Outline, ink | `#2e1f2b` | `k` |
+| Soft outline (lit side), inner lines | `#5a3a4a` | `K` |
+| Highlight, paper white | `#fff8ec` | `w` |
+| Paper, cream | `#f1dfc0` | `W` |
+| Paper shade | `#d6bd98` | `V` |
+| Lantern red | `#d1453b` | `r` |
+| Red shade | `#93302f` | `R` |
+| Amber | `#f0a83a` | `y` |
+| Amber light | `#ffd77e` | `Y` |
+| Amber shade | `#bf7426` | `o` |
+| Leaf green | `#6f9e4c` | `g` |
+| Green shade | `#3f6b3a` | `G` |
+| Sky blue | `#6fa8d6` | `b` |
+| Blue shade | `#3e6a9e` | `B` |
+| Night indigo | `#2f3363` | `i` |
+| Indigo light | `#525694` | `I` |
+| Grey | `#b0a3ad` | `s` |
+| Grey shade | `#74677a` | `S` |
+| Wood | `#9c5b3b` | `n` |
+| Wood shade | `#663a2c` | `N` |
+| Wood light | `#cf9259` | `l` |
+| Sakura pink | `#f4a8bb` | `p` |
+| Pink shade | `#d27590` | `P` |
+| Blush | `#ee8c86` | `m` |
+| Peach light | `#ffe9d6` | `e` |
+| Peach | `#f6c6ae` | `q` |
+| Peach shade | `#de9f88` | `Q` |
+| Mochi cream | `#fbeedd` | `c` |
+| Mochi cream shade | `#e6cbb0` | `C` |
+
+The partners' bodies use three tones that depend on the partner: partner A (cream) `w`, `c`, `C`; partner B (peach) `e`, `q`, `Q`.
 
 Interface colours that are not used in images: page `#f4ecd8`, panel `#e9d8a6`, muted text `#7d6f84`, quiet `#cdbfa6`.
 
@@ -52,7 +74,7 @@ Map colours (vector style, no images): water `#6fa3a8`, land `#e9d8a6`, vegetati
 | Logo | 12 × 12 | 3× | 36 px |
 | Reaction stickers | 16 × 16 | 2× | 32 px |
 | Decorative stickers | 16 × 16 | 3× | 48 px |
-| Characters and pet | 32 × 32 per frame (recommended) | 2× | 64 px |
+| Characters, headpieces, and pet | 32 × 32 per frame | 2× | 64 px |
 | Portraits (optional) | same as the character frame | 1× or 2× | 32 or 64 px |
 | Badge icons (Phase 4) | 16 × 16 | 3× | 48 px |
 
@@ -66,11 +88,17 @@ Map colours (vector style, no images): water `#6fa3a8`, land `#e9d8a6`, vegetati
 
 | Key | Content |
 |---|---|
-| `partner-a` | The partner who created the space (member slot 1) |
-| `partner-b` | The partner who joined by invitation (member slot 2) |
-| `pet` | The pet |
+| `characters/partner-a` | Body of the partner who created the space (member slot 1): a cream mochi (rice-cake) creature |
+| `characters/partner-b` | Body of the partner who joined by invitation (member slot 2): a peach mochi creature |
+| `characters/pet` | The pet: a cream cat with amber patches and a red collar with a bell |
+| `headpieces/rosette` | Red rosette with ribbon tails, worn on the side of the head |
+| `headpieces/top-hat` | Indigo top hat with a red band |
+| `headpieces/chef-hat` | White chef's hat |
+| `headpieces/cat-ears` | Brown cat ears with pink insides |
 
-One sprite sheet per key.
+One sprite sheet per key. All are original designs.
+
+**Headpieces.** A partner is drawn as two layers: the body sheet of their slot, and over it the headpiece sheet they have chosen. Each member chooses one of the four headpieces in the settings (stored as the member's `spriteId`); the defaults are the rosette for partner A and the top hat for partner B. A headpiece sheet has the same layout and frame size as the body sheets and is drawn so that, frame by frame, it sits on the head of either body, following the squash, stretch, and hop of the walk. Everything outside the headpiece is transparent.
 
 ### 4.2 Sheet Layout
 
@@ -89,7 +117,7 @@ A sheet is a grid of **4 columns × 8 rows** of equal frames. For 32 × 32 frame
 
 - Columns 2–3 of the idle rows stay transparent.
 - The right-facing rows must be filled even when they are a mirror image of the left-facing rows.
-- Idle: a small loop, for example breathing or blinking. Walk: a full step cycle in four frames (contact, passing, contact, passing).
+- Idle: a small loop, for example breathing or blinking. Walk: a full step cycle in four frames (contact, passing, contact, passing). The mochi bodies hop instead: squash, stretch upwards, top of the hop, landing.
 
 ### 4.3 Position Within a Frame
 
@@ -121,15 +149,19 @@ Walks are short (at most 0.6 seconds) and stop at once when the user selects som
 
 `daily`, `food`, `travel`, `film`, `walk`, `home`, `gift`, `festival`, `music`, `other`
 
+Built-in drawings: sun, steaming bowl, suitcase, clapperboard, shoe, house, gift box, firework, music note, gem.
+
 ### 5.2 Map Landmark Icons (12 × 12)
 
 `pin`, `home`, `food`, `park`, `mountain`, `water`, `city`, `station`
 
+Built-in drawings: map pin, house, rice ball, tree, snow-capped mountain, waves, buildings, train.
+
 Landmark icons are drawn on the map, so they need a clear silhouette and an outline that separates them from the map colours.
 
-### 5.3 Logo (12 × 12)
+### 5.3 Logo and Speech Icon (12 × 12)
 
-`logo`
+`logo`: a red paper lantern with a heart. `speech`: a speech bubble, shown next to comment counts.
 
 ---
 
@@ -173,11 +205,13 @@ The edge segments between the corners are repeated, not stretched, so they must 
 ```
 packages/client/src/assets/art/
   characters/partner-a.png      partner-b.png      pet.png
+  headpieces/rosette.png        top-hat.png        chef-hat.png      cat-ears.png
   portraits/partner-a.png       (optional, same for the others)
   categories/<key>.png
   places/<key>.png
   stickers/<key>.png
   logo.png
+  speech.png
   CREDITS.md
 ```
 
@@ -202,15 +236,27 @@ Licences that forbid modification, or that limit use to non-private or non-comme
 4. The file appears correctly on the pixel-rendering validation page (Settings → Validation pages → Pixel rendering) on both phones.
 5. The file is listed in `CREDITS.md`.
 
-### 8.4 Swapping a Placeholder
+### 8.4 Source Drawings and Build
 
-In `manifest.ts`, replace the generated value with an import of the file, for example:
+The built-in images are not edited as PNG files. They are generated from source drawings in `packages/client/art/`:
 
-```ts
-import partnerA from './art/characters/partner-a.png'
+| File | Content |
+|---|---|
+| `palette.ts` | The palette of Section 2 and the body tones of the two partners |
+| `render.ts` | A small rasteriser for cel-shaded figures: shapes drawn back to front, outline, inner lines, shade and highlight |
+| `characters.ts` | The mochi bodies (poses per frame, face per facing) |
+| `headpieces.ts` | The four headpieces, placed on the head in every frame |
+| `pet.ts` | The cat |
+| `stickers.ts`, `icons.ts` | Stickers, category and landmark icons, logo, speech icon |
+| `build.ts`, `png.ts` | Builds all files and encodes PNG |
+| `check.ts` | The acceptance check of Section 8.3, items 1–3 |
 
-export const characterSheets = {
-  'partner-a': { src: partnerA, frameWidth: 32, frameHeight: 32 },
-  // ...
-}
+After changing a drawing, run:
+
+```bash
+pnpm art
 ```
+
+This writes every file of Section 8.1, writes `CREDITS.md`, writes a contact sheet of all art to `docs/art/preview.png`, and runs the acceptance check. Generated files are committed.
+
+To use art from another source instead, replace the PNG file with one that follows this specification and stop regenerating that file (or remove its drawing from `build.ts`), and record it in `CREDITS.md`.

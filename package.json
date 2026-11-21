@@ -14,7 +14,8 @@
     "start": "pnpm --filter @days/server start",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "e2e": "pnpm --filter @days/server exec tsx ../../e2e/run.ts"
+    "e2e": "pnpm --filter @days/server exec tsx ../../e2e/run.ts",
+    "art": "pnpm --filter @days/server exec tsx ../client/art/build.ts"
   },
   "devDependencies": {
     "fflate": "^0.8.3",

@@ -139,7 +139,9 @@ Not yet implemented: playful features (Phase 4).
 
 ### Art
 
-All icons (categories and the eight landmark icons for Places), the logo, the stickers, and the sprite sheets of the partners and the pet are placeholders drawn in code. They are defined only in `packages/client/src/assets/manifest.ts`; replacing the entries there with image files replaces the art everywhere. Sizes, sheet layout, palette, and delivery are specified in [docs/asset-spec.md](docs/asset-spec.md).
+All built-in images are original pixel art drawn for this project: the two partners are round mochi (rice-cake) creatures, cream for partner A and peach for partner B, and the pet is a cat. Each member chooses a headpiece in the settings (rosette, top hat, chef's hat, or cat ears), drawn as a layer over the body. The icons, stickers, and the logo (a paper lantern with a heart) use the same warm palette and three-tone shading.
+
+The images are generated from source drawings in `packages/client/art/` with `pnpm art`, which also checks them against the specification and writes a contact sheet to [docs/art/preview.png](docs/art/preview.png). They are listed in `packages/client/src/assets/manifest.ts`. Sizes, sheet layout, palette, and delivery are specified in [docs/asset-spec.md](docs/asset-spec.md).
 
 ### Typeface
 

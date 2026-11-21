@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Text, View } from '@tarojs/components'
 import Taro from '@tarojs/taro'
-import { KEY_DATE_LABEL_MAX_LENGTH, todayLocal, type KeyDate, type Lang } from '@days/shared'
+import { HEADPIECE_KEYS, KEY_DATE_LABEL_MAX_LENGTH, todayLocal, type HeadpieceKey, type KeyDate, type Lang } from '@days/shared'
 import { ApiFailure, EXPORT_URL, api } from '../../api/client'
 import { copyText, currentOrigin, downloadUrl } from '../../browser/photo'
 import { errorText, getLang, setLang, useT } from '../../i18n'
 import { ROUTES, clearStatus, getMapLowRes, loadStatus, setMapLowRes, useMember, useStatus } from '../../state/session'
 import { Button, DateDialog, Field, Frame, TextInput, TopBar, formatDate, useToast } from '../../ui'
-import { forgetBubbles } from '../../ui/Characters'
+import { LookPortrait, forgetBubbles, headpieceOf, partnerLook } from '../../ui/Characters'
 
 export default function SettingsPage() {
   const t = useT()
@@ -26,6 +26,12 @@ export default function SettingsPage() {
     setLang(next)
     await api.updateMe({ lang: next }).catch(() => undefined)
     loadStatus(true)
+  }
+  const wearing = headpieceOf(me)
+  const chooseHeadpiece = async (next: HeadpieceKey) => {
+    if (next === wearing) return
+    await api.updateMe({ spriteId: next })
+    await loadStatus(true)
   }
   const saveName = async () => {
     const value = (name ?? '').trim()
@@ -59,6 +65,21 @@ export default function SettingsPage() {
             <Button small kind="calm" disabled={name === null || !name.trim() || name.trim() === me.displayName} onClick={saveName} testId="save-name">
               {t('common.save')}
             </Button>
+          </View>
+        </Field>
+        <Field label={t('settings.appearance')}>
+          <View className="row wrap appearance">
+            {HEADPIECE_KEYS.map((k) => (
+              <View
+                key={k}
+                className={k === wearing ? 'look-option selected' : 'look-option'}
+                data-testid={`headpiece-${k}`}
+                onClick={() => chooseHeadpiece(k)}
+              >
+                <LookPortrait look={partnerLook(me.slot, k)} />
+                <Text className="small">{t(`headpiece.${k}`)}</Text>
+              </View>
+            ))}
           </View>
         </Field>
         <Field label={t('settings.mapStyle')} hint={t('settings.mapStyle.hint')}>

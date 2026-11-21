@@ -481,6 +481,22 @@ async function main() {
     assert.equal(await a.locator(`${tid('map-party')} .actor`).count(), 3)
     await shot(a, '26-map-party')
 
+    step('each member chooses a headpiece')
+    await a.goto(`${base}/#/pages/settings/index`)
+    await a.locator(`.taro_page_show ${tid('headpiece-rosette')}.selected`).waitFor()
+    await a.locator(`.taro_page_show ${tid('headpiece-chef-hat')}`).click()
+    await a.locator(`.taro_page_show ${tid('headpiece-chef-hat')}.selected`).waitFor()
+    await shot(a, '27-settings-appearance')
+    const members = ((await (await ctxA.request.get(`${base}/api/status`)).json()).members as { slot: number; spriteId: string }[])
+    assert.deepEqual(members.map((m) => [m.slot, m.spriteId]).sort(), [[1, 'chef-hat'], [2, 'top-hat']])
+    await a.goto(`${base}/#/pages/timeline/index`)
+    await a.locator('.taro_page_show .party .actor >> nth=0').waitFor()
+    const layers = await a
+      .locator('.taro_page_show .party .actor')
+      .evaluateAll((els) => els.map((el) => ((el as HTMLElement).style.backgroundImage.match(/url\(/g) ?? []).length))
+    assert.deepEqual(layers, [2, 2, 1], 'partners wear a headpiece over the body; the pet has one layer')
+    await shot(a, '28-timeline-headpieces')
+
     step('validation page a: photo metadata')
     await a.goto(`${base}/#/pages/lab/exif`)
     await choose(a, tid('lab-select'), [file('harbour-1.jpg'), file('screenshot.jpg')])

@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react'
 import { View } from '@tarojs/components'
-import { planBubbles, todayLocal, type Bubble, type Member, type StatusResponse } from '@days/shared'
+import { defaultHeadpiece, isHeadpieceKey, planBubbles, todayLocal, type Bubble, type HeadpieceKey, type Member, type StatusResponse } from '@days/shared'
 import { api } from '../api/client'
-import { characterSheets, type CharacterKey, type CharacterSheet } from '../assets/manifest'
+import { characterSheets, headpieceSheets, type CharacterKey, type Look } from '../assets/manifest'
 import { Party, facingFor, frameStyle, spriteScale, tween, walkMs } from '../browser/sprites'
 import type { Translate } from '../i18n'
 import { cx } from '.'
@@ -13,21 +13,36 @@ export function characterKey(slot: 1 | 2): CharacterKey {
   return slot === 1 ? 'partner-a' : 'partner-b'
 }
 
-/** The party in display order: members by slot, then the pet. */
-export function partyMembers(status: StatusResponse | null): { id: number; sheet: CharacterSheet }[] {
+/** The headpiece a member wears; unknown values fall back to the slot's default. */
+export function headpieceOf(m: Pick<Member, 'slot' | 'spriteId'>): HeadpieceKey {
+  return isHeadpieceKey(m.spriteId) ? m.spriteId : defaultHeadpiece(m.slot)
+}
+
+/** A partner's body with a headpiece over it. */
+export function partnerLook(slot: 1 | 2, headpiece: HeadpieceKey): Look {
+  return [characterSheets[characterKey(slot)], headpieceSheets[headpiece]]
+}
+
+const lookOf = (m: Member | undefined): Look => (m ? partnerLook(m.slot, headpieceOf(m)) : [characterSheets.pet])
+
+/** The party in display order: members by slot, then the pet. `key` changes when a look changes. */
+export function partyMembers(status: StatusResponse | null): { id: number; look: Look; key: string }[] {
   const members = [...(status?.members ?? [])].sort((a, b) => a.slot - b.slot)
   return [
-    ...members.map((m: Member) => ({ id: m.id, sheet: characterSheets[characterKey(m.slot)] })),
-    { id: PET_ID, sheet: characterSheets.pet },
+    ...members.map((m: Member) => ({ id: m.id, look: lookOf(m), key: `${m.id}:${headpieceOf(m)}` })),
+    { id: PET_ID, look: lookOf(undefined), key: 'pet' },
   ]
 }
 
 /** The first idle frame facing the viewer, used next to dialogue lines and reactions. */
 export function Portrait(props: { status: StatusResponse | null; memberId: number; size?: 'small' | 'normal'; className?: string }) {
-  const member = props.status?.members.find((m) => m.id === props.memberId)
-  const sheet = member ? characterSheets[characterKey(member.slot)] : characterSheets.pet
-  const scale = props.size === 'small' ? Math.max(1, spriteScale(sheet, 24)) : spriteScale(sheet, 48)
-  return <View className={cx('portrait', props.className)} style={frameStyle(sheet, scale)} />
+  const look = lookOf(props.status?.members.find((m) => m.id === props.memberId))
+  return <LookPortrait look={look} size={props.size} className={props.className} />
+}
+
+export function LookPortrait(props: { look: Look; size?: 'small' | 'normal'; className?: string }) {
+  const scale = props.size === 'small' ? Math.max(1, spriteScale(props.look[0], 24)) : spriteScale(props.look[0], 48)
+  return <View className={cx('portrait', props.className)} style={frameStyle(props.look, scale)} />
 }
 
 // ---- speech bubbles ----
@@ -127,11 +142,11 @@ export function PartyStage(props: {
   }
 
   // The party is created once per set of characters.
-  const key = order.join(',')
+  const key = members.map((m) => m.key).join(',')
   useEffect(() => {
     const el = host.current
     if (!el) return
-    const p = new Party(members.map((m) => m.sheet))
+    const p = new Party(members.map((m) => m.look))
     p.el.addEventListener('click', () => (p.speaking() ? p.hush() : speakNext()))
     el.appendChild(p.el)
     party.current = p
